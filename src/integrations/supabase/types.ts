@@ -20,9 +20,14 @@ export type Database = {
           attachment_url: string | null
           content: string | null
           created_at: string
+          deleted_for: string[]
+          deleted_for_everyone: boolean
+          edited_at: string | null
           id: string
+          is_pinned: boolean
           read_at: string | null
           receiver_id: string
+          reply_to_id: string | null
           sender_id: string
         }
         Insert: {
@@ -30,9 +35,14 @@ export type Database = {
           attachment_url?: string | null
           content?: string | null
           created_at?: string
+          deleted_for?: string[]
+          deleted_for_everyone?: boolean
+          edited_at?: string | null
           id?: string
+          is_pinned?: boolean
           read_at?: string | null
           receiver_id: string
+          reply_to_id?: string | null
           sender_id: string
         }
         Update: {
@@ -40,12 +50,25 @@ export type Database = {
           attachment_url?: string | null
           content?: string | null
           created_at?: string
+          deleted_for?: string[]
+          deleted_for_everyone?: boolean
+          edited_at?: string | null
           id?: string
+          is_pinned?: boolean
           read_at?: string | null
           receiver_id?: string
+          reply_to_id?: string | null
           sender_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "messages_reply_to_id_fkey"
+            columns: ["reply_to_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -55,6 +78,7 @@ export type Database = {
           display_name: string | null
           id: string
           is_verified: boolean
+          last_seen_at: string
           suspended_until: string | null
           updated_at: string
           username: string
@@ -66,6 +90,7 @@ export type Database = {
           display_name?: string | null
           id: string
           is_verified?: boolean
+          last_seen_at?: string
           suspended_until?: string | null
           updated_at?: string
           username: string
@@ -77,6 +102,7 @@ export type Database = {
           display_name?: string | null
           id?: string
           is_verified?: boolean
+          last_seen_at?: string
           suspended_until?: string | null
           updated_at?: string
           username?: string
@@ -136,6 +162,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_delete_message: { Args: { msg_id: string }; Returns: undefined }
       admin_list_users: {
         Args: { search_query?: string }
         Returns: {
@@ -148,6 +175,21 @@ export type Database = {
           username: string
         }[]
       }
+      admin_recent_messages: {
+        Args: { limit_n?: number }
+        Returns: {
+          attachment_type: string
+          content: string
+          created_at: string
+          deleted_for_everyone: boolean
+          id: string
+          receiver_id: string
+          receiver_username: string
+          sender_id: string
+          sender_username: string
+        }[]
+      }
+      admin_stats: { Args: never; Returns: Json }
       admin_update_user: {
         Args: {
           clear_suspension?: boolean
@@ -164,6 +206,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      touch_last_seen: { Args: never; Returns: undefined }
     }
     Enums: {
       app_role: "admin" | "user"

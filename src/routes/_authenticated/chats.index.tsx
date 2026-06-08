@@ -38,23 +38,33 @@ function ChatsList() {
     });
   }, []);
 
+  // heartbeat
+  useEffect(() => {
+    if (!userId) return;
+    supabase.rpc("touch_last_seen");
+    const t = setInterval(() => supabase.rpc("touch_last_seen"), 30000);
+    return () => clearInterval(t);
+  }, [userId]);
+
   const { data: chats = [] } = useQuery<ChatItem[]>({
     queryKey: ["chats", userId],
     enabled: !!userId,
+    refetchInterval: 30000,
     queryFn: async () => {
       if (!userId) return [];
       const { data: msgs, error } = await supabase
         .from("messages")
-        .select("id, sender_id, receiver_id, content, attachment_type, read_at, created_at")
+        .select("id, sender_id, receiver_id, content, attachment_type, read_at, created_at, deleted_for_everyone, deleted_for")
         .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
         .order("created_at", { ascending: false })
         .limit(500);
       if (error) throw error;
+      const filtered = (msgs ?? []).filter((m: { deleted_for: string[] | null }) => !(m.deleted_for || []).includes(userId));
       const grouped = new Map<string, ChatItem>();
       const unreadCounts = new Map<string, number>();
-      for (const m of msgs ?? []) {
+      for (const m of filtered) {
         const other = m.sender_id === userId ? m.receiver_id : m.sender_id;
-        if (m.receiver_id === userId && !m.read_at) {
+        if (m.receiver_id === userId && !m.read_at && !m.deleted_for_everyone) {
           unreadCounts.set(other, (unreadCounts.get(other) || 0) + 1);
         }
         if (!grouped.has(other)) {
@@ -64,8 +74,8 @@ function ChatsList() {
             other_display_name: null,
             other_avatar: null,
             other_verified: false,
-            last_content: m.content,
-            last_attachment_type: m.attachment_type,
+            last_content: m.deleted_for_everyone ? "🚫 پیام حذف شده" : m.content,
+            last_attachment_type: m.deleted_for_everyone ? null : m.attachment_type,
             last_at: m.created_at,
             unread: 0,
           });

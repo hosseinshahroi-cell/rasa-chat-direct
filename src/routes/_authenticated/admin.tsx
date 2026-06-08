@@ -6,11 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { UserAvatar } from "@/components/UserAvatar";
-import { ArrowRight, Search, BadgeCheck, Ban, ShieldOff, Users } from "lucide-react";
+import { ArrowRight, Search, BadgeCheck, Ban, ShieldOff, Users, MessageSquare, Activity, UserPlus, Wifi, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter
 } from "@/components/ui/dialog";
+import { formatRelativeTime } from "@/lib/format";
 
 export const Route = createFileRoute("/_authenticated/admin")({
   head: () => ({ meta: [{ title: "پنل ادمین - رسا" }] }),
@@ -51,12 +52,35 @@ function AdminPage() {
   const { data: stats } = useQuery({
     queryKey: ["admin-stats"],
     enabled: !!allowed,
+    refetchInterval: 30000,
     queryFn: async () => {
-      const { count } = await supabase.from("profiles").select("id", { count: "exact", head: true });
-      const { count: msgCount } = await supabase.from("messages").select("id", { count: "exact", head: true });
-      return { users: count || 0, messages: msgCount || 0 };
+      const { data, error } = await supabase.rpc("admin_stats");
+      if (error) throw error;
+      return data as Record<string, number>;
     },
   });
+
+  const { data: recent = [] } = useQuery({
+    queryKey: ["admin-recent-messages"],
+    enabled: !!allowed,
+    refetchInterval: 15000,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("admin_recent_messages", { limit_n: 30 });
+      if (error) throw error;
+      return data as Array<{
+        id: string; sender_id: string; receiver_id: string;
+        sender_username: string; receiver_username: string;
+        content: string | null; attachment_type: string | null;
+        created_at: string; deleted_for_everyone: boolean;
+      }>;
+    },
+  });
+
+  const deleteMsg = async (id: string) => {
+    const { error } = await supabase.rpc("admin_delete_message", { msg_id: id });
+    if (error) toast.error(error.message);
+    else { toast.success("پیام حذف شد"); qc.invalidateQueries({ queryKey: ["admin-recent-messages"] }); }
+  };
 
   const toggleVerified = async (u: AdminProfile) => {
     const { error } = await supabase.rpc("admin_update_user", { target_user: u.id, new_is_verified: !u.is_verified });
@@ -87,25 +111,15 @@ function AdminPage() {
       </header>
 
       <main className="max-w-3xl mx-auto p-4 space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          <Card className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-primary/15 text-primary flex items-center justify-center"><Users className="w-5 h-5" /></div>
-              <div>
-                <p className="text-xs text-muted-foreground">تعداد کاربران</p>
-                <p className="text-2xl font-bold">{stats?.users ?? "—"}</p>
-              </div>
-            </div>
-          </Card>
-          <Card className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-primary/15 text-primary flex items-center justify-center">💬</div>
-              <div>
-                <p className="text-xs text-muted-foreground">کل پیام‌ها</p>
-                <p className="text-2xl font-bold">{stats?.messages ?? "—"}</p>
-              </div>
-            </div>
-          </Card>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <StatCard icon={<Users className="w-5 h-5" />} label="کاربران" value={stats?.users} />
+          <StatCard icon={<MessageSquare className="w-5 h-5" />} label="پیام‌ها" value={stats?.messages} />
+          <StatCard icon={<Wifi className="w-5 h-5" />} label="آنلاین الان" value={stats?.online_now} highlight />
+          <StatCard icon={<Activity className="w-5 h-5" />} label="فعال امروز" value={stats?.active_today} />
+          <StatCard icon={<BadgeCheck className="w-5 h-5" />} label="تأیید شده" value={stats?.verified} />
+          <StatCard icon={<Ban className="w-5 h-5" />} label="تعلیق فعال" value={stats?.suspended} />
+          <StatCard icon={<UserPlus className="w-5 h-5" />} label="عضو امروز" value={stats?.new_today} />
+          <StatCard icon={<MessageSquare className="w-5 h-5" />} label="پیام امروز" value={stats?.messages_today} />
         </div>
 
         <Card className="p-3">
@@ -141,8 +155,57 @@ function AdminPage() {
             })}
           </ul>
         </Card>
+
+        <Card>
+          <div className="px-4 py-3 border-b">
+            <h3 className="font-semibold text-sm">آخرین پیام‌ها</h3>
+          </div>
+          <ul className="divide-y max-h-96 overflow-y-auto">
+            {recent.length === 0 && (
+              <li className="text-center text-xs text-muted-foreground py-6">پیامی نیست</li>
+            )}
+            {recent.map((m) => (
+              <li key={m.id} className="p-3 flex items-start gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-muted-foreground" dir="ltr">
+                    @{m.sender_username} → @{m.receiver_username}
+                  </p>
+                  <p className={`text-sm truncate ${m.deleted_for_everyone ? "italic text-muted-foreground" : ""}`}>
+                    {m.deleted_for_everyone ? "حذف شده توسط ادمین" :
+                     m.attachment_type === "image" ? "🖼 عکس" :
+                     m.attachment_type === "audio" ? "🎤 صدا" :
+                     m.attachment_type === "file" ? "📎 فایل" :
+                     m.content || "—"}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">{formatRelativeTime(m.created_at)}</p>
+                </div>
+                {!m.deleted_for_everyone && (
+                  <Button size="icon" variant="ghost" onClick={() => deleteMsg(m.id)}>
+                    <Trash2 className="w-4 h-4 text-destructive" />
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </Card>
       </main>
     </div>
+  );
+}
+
+function StatCard({ icon, label, value, highlight }: { icon: React.ReactNode; label: string; value: number | undefined; highlight?: boolean }) {
+  return (
+    <Card className="p-3">
+      <div className="flex items-center gap-2">
+        <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${highlight ? "bg-primary text-primary-foreground" : "bg-primary/15 text-primary"}`}>
+          {icon}
+        </div>
+        <div className="min-w-0">
+          <p className="text-[10px] text-muted-foreground truncate">{label}</p>
+          <p className="text-xl font-bold">{value ?? "—"}</p>
+        </div>
+      </div>
+    </Card>
   );
 }
 
