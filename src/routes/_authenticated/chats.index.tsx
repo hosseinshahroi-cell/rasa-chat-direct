@@ -4,10 +4,10 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/UserAvatar";
-import { MessageCirclePlus, Settings, Shield, MessageCircle, LogOut } from "lucide-react";
+import { MessageCirclePlus, Settings, Shield, MessageCircle, LogOut, Bookmark, BadgeCheck } from "lucide-react";
 import { formatRelativeTime } from "@/lib/format";
 
-export const Route = createFileRoute("/_authenticated/chats")({
+export const Route = createFileRoute("/_authenticated/chats/")({
   head: () => ({ meta: [{ title: "گفتگوها - رسا" }] }),
   component: ChatsList,
 });
@@ -124,8 +124,22 @@ function ChatsList() {
       </header>
 
       <main className="max-w-2xl mx-auto">
+        {userId && (
+          <Link
+            to="/chats/$userId" params={{ userId }}
+            className="flex items-center gap-3 px-4 py-3 hover:bg-accent/50 transition border-b"
+          >
+            <div className="w-12 h-12 rounded-full bg-primary/15 text-primary flex items-center justify-center shrink-0">
+              <Bookmark className="w-6 h-6" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold">پیام‌های ذخیره شده</p>
+              <p className="text-xs text-muted-foreground">یادداشت‌ها و فایل‌های شخصی شما</p>
+            </div>
+          </Link>
+        )}
         {chats.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 text-center px-4">
+          <div className="flex flex-col items-center justify-center py-20 text-center px-4">
             <div className="w-20 h-20 rounded-3xl bg-primary/10 flex items-center justify-center mb-4">
               <MessageCircle className="w-10 h-10 text-primary" />
             </div>
@@ -146,7 +160,10 @@ function ChatsList() {
                   <UserAvatar avatarPath={c.other_avatar} name={c.other_display_name || c.other_username} verified={c.other_verified} className="w-12 h-12" />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-baseline justify-between gap-2">
-                      <span className="font-semibold truncate">{c.other_display_name || c.other_username}</span>
+                      <span className="font-semibold truncate flex items-center gap-1">
+                        {c.other_display_name || c.other_username}
+                        {c.other_verified && <BadgeCheck className="w-4 h-4 text-primary fill-primary stroke-background shrink-0" />}
+                      </span>
                       <span className="text-xs text-muted-foreground shrink-0">{formatRelativeTime(c.last_at)}</span>
                     </div>
                     <div className="flex items-center justify-between gap-2">

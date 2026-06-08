@@ -121,7 +121,10 @@ function AdminPage() {
                 <li key={u.id} className="p-3 flex items-center gap-3">
                   <UserAvatar avatarPath={u.avatar_url} name={u.display_name || u.username} verified={u.is_verified} className="w-11 h-11" />
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">{u.display_name || u.username}</p>
+                    <p className="font-medium truncate flex items-center gap-1">
+                      {u.display_name || u.username}
+                      {u.is_verified && <BadgeCheck className="w-4 h-4 text-primary fill-primary stroke-background shrink-0" />}
+                    </p>
                     <p className="text-xs text-muted-foreground truncate" dir="ltr">@{u.username}</p>
                     {isSuspended && (
                       <p className="text-xs text-destructive mt-0.5">تعلیق تا {new Date(u.suspended_until!).toLocaleDateString("fa-IR")}</p>
