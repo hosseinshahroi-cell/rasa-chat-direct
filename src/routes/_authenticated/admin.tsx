@@ -155,8 +155,57 @@ function AdminPage() {
             })}
           </ul>
         </Card>
+
+        <Card>
+          <div className="px-4 py-3 border-b">
+            <h3 className="font-semibold text-sm">آخرین پیام‌ها</h3>
+          </div>
+          <ul className="divide-y max-h-96 overflow-y-auto">
+            {recent.length === 0 && (
+              <li className="text-center text-xs text-muted-foreground py-6">پیامی نیست</li>
+            )}
+            {recent.map((m) => (
+              <li key={m.id} className="p-3 flex items-start gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-muted-foreground" dir="ltr">
+                    @{m.sender_username} → @{m.receiver_username}
+                  </p>
+                  <p className={`text-sm truncate ${m.deleted_for_everyone ? "italic text-muted-foreground" : ""}`}>
+                    {m.deleted_for_everyone ? "حذف شده توسط ادمین" :
+                     m.attachment_type === "image" ? "🖼 عکس" :
+                     m.attachment_type === "audio" ? "🎤 صدا" :
+                     m.attachment_type === "file" ? "📎 فایل" :
+                     m.content || "—"}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">{formatRelativeTime(m.created_at)}</p>
+                </div>
+                {!m.deleted_for_everyone && (
+                  <Button size="icon" variant="ghost" onClick={() => deleteMsg(m.id)}>
+                    <Trash2 className="w-4 h-4 text-destructive" />
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </Card>
       </main>
     </div>
+  );
+}
+
+function StatCard({ icon, label, value, highlight }: { icon: React.ReactNode; label: string; value: number | undefined; highlight?: boolean }) {
+  return (
+    <Card className="p-3">
+      <div className="flex items-center gap-2">
+        <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${highlight ? "bg-primary text-primary-foreground" : "bg-primary/15 text-primary"}`}>
+          {icon}
+        </div>
+        <div className="min-w-0">
+          <p className="text-[10px] text-muted-foreground truncate">{label}</p>
+          <p className="text-xl font-bold">{value ?? "—"}</p>
+        </div>
+      </div>
+    </Card>
   );
 }
 
