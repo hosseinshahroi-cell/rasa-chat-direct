@@ -354,14 +354,37 @@ function ChatView() {
                 <p className="font-semibold truncate flex items-center gap-1">
                   {other.display_name || other.username}
                   {other.is_verified && <BadgeCheck className="w-4 h-4 text-primary fill-primary stroke-background shrink-0" />}
+                  {other.is_scammer && (
+                    <span className="inline-flex items-center gap-0.5 text-[10px] bg-destructive/15 text-destructive px-1.5 py-0.5 rounded-full">
+                      <ShieldAlert className="w-3 h-3" /> کلاهبردار
+                    </span>
+                  )}
                 </p>
                 <p className={`text-xs truncate ${formatLastSeen(other.last_seen_at) === "آنلاین" ? "text-primary" : "text-muted-foreground"}`}>
                   {formatLastSeen(other.last_seen_at)}
                 </p>
               </div>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button size="icon" variant="ghost"><MoreVertical className="w-5 h-5" /></Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-44 p-1" align="end">
+                  <button onClick={() => setReportOpen(true)} className="w-full text-right flex items-center gap-2 px-3 py-2 rounded hover:bg-accent text-sm text-destructive">
+                    <Flag className="w-4 h-4" /> گزارش کاربر
+                  </button>
+                </PopoverContent>
+              </Popover>
             </>
           )}
         </div>
+        {other?.is_scammer && (
+          <div className="bg-destructive/10 border-t border-destructive/20">
+            <div className="max-w-2xl mx-auto px-3 py-1.5 text-xs text-destructive flex items-center gap-1.5">
+              <ShieldAlert className="w-3.5 h-3.5" />
+              این کاربر به عنوان کلاهبردار توسط مدیران علامت‌گذاری شده است.
+            </div>
+          </div>
+        )}
         {pinned.length > 0 && (
           <div className="border-t bg-card/70">
             <div className="max-w-2xl mx-auto px-3 py-1.5 flex items-center gap-2 text-xs">
@@ -393,6 +416,9 @@ function ChatView() {
                 mine={mine}
                 signed={signed}
                 replied={replied}
+                reactions={reactionsByMessage.get(m.id) || []}
+                me={me!}
+                onReact={(emoji) => toggleReaction(m.id, emoji)}
                 onReply={() => { setReplyTo(m); setEditing(null); }}
                 onEdit={() => beginEdit(m)}
                 onPin={() => togglePin(m)}
@@ -403,6 +429,9 @@ function ChatView() {
           })}
         </div>
       </div>
+
+      {!isSelf && other && <ReportDialog open={reportOpen} onOpenChange={setReportOpen} reportedUserId={other.id} /> }
+
 
       {(replyTo || editing) && (
         <div className="bg-accent/40 border-t">
