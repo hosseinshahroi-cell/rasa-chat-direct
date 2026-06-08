@@ -111,25 +111,15 @@ function AdminPage() {
       </header>
 
       <main className="max-w-3xl mx-auto p-4 space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          <Card className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-primary/15 text-primary flex items-center justify-center"><Users className="w-5 h-5" /></div>
-              <div>
-                <p className="text-xs text-muted-foreground">تعداد کاربران</p>
-                <p className="text-2xl font-bold">{stats?.users ?? "—"}</p>
-              </div>
-            </div>
-          </Card>
-          <Card className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-primary/15 text-primary flex items-center justify-center">💬</div>
-              <div>
-                <p className="text-xs text-muted-foreground">کل پیام‌ها</p>
-                <p className="text-2xl font-bold">{stats?.messages ?? "—"}</p>
-              </div>
-            </div>
-          </Card>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <StatCard icon={<Users className="w-5 h-5" />} label="کاربران" value={stats?.users} />
+          <StatCard icon={<MessageSquare className="w-5 h-5" />} label="پیام‌ها" value={stats?.messages} />
+          <StatCard icon={<Wifi className="w-5 h-5" />} label="آنلاین الان" value={stats?.online_now} highlight />
+          <StatCard icon={<Activity className="w-5 h-5" />} label="فعال امروز" value={stats?.active_today} />
+          <StatCard icon={<BadgeCheck className="w-5 h-5" />} label="تأیید شده" value={stats?.verified} />
+          <StatCard icon={<Ban className="w-5 h-5" />} label="تعلیق فعال" value={stats?.suspended} />
+          <StatCard icon={<UserPlus className="w-5 h-5" />} label="عضو امروز" value={stats?.new_today} />
+          <StatCard icon={<MessageSquare className="w-5 h-5" />} label="پیام امروز" value={stats?.messages_today} />
         </div>
 
         <Card className="p-3">
