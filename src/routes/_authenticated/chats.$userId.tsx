@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { UserAvatar } from "@/components/UserAvatar";
-import { ArrowRight, Send, Paperclip, Image as ImageIcon, Mic, StopCircle, Loader2 } from "lucide-react";
+import { ArrowRight, Send, Paperclip, Image as ImageIcon, Mic, StopCircle, Loader2, Bookmark, BadgeCheck } from "lucide-react";
 import { formatChatTime } from "@/lib/format";
 import { toast } from "sonner";
 
