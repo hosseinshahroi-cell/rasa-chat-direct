@@ -183,7 +183,7 @@ function ChatView() {
   };
   const stopRecord = () => { recRef.current?.stop(); setRecording(false); };
 
-  const isSuspended = other?.suspended_until && new Date(other.suspended_until) > new Date();
+  const isSuspended = false;
 
   return (
     <div className="flex flex-col h-screen bg-background">
