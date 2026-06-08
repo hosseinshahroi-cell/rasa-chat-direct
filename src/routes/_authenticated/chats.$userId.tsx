@@ -525,12 +525,15 @@ function ChatView() {
 }
 
 function MessageBubble({
-  m, mine, signed, replied, onReply, onEdit, onPin, onDelete, onImageClick,
+  m, mine, signed, replied, reactions, me, onReact, onReply, onEdit, onPin, onDelete, onImageClick,
 }: {
   m: Message;
   mine: boolean;
   signed: string | null;
   replied: Message | null | undefined;
+  reactions: Reaction[];
+  me: string;
+  onReact: (emoji: string) => void;
   onReply: () => void;
   onEdit: () => void;
   onPin: () => void;
@@ -549,8 +552,31 @@ function MessageBubble({
     );
   }
 
+  if (m.is_announcement) {
+    return (
+      <div className="flex justify-center my-2">
+        <div className="max-w-[90%] rounded-xl px-3 py-2 bg-primary/10 border border-primary/30 text-center">
+          <div className="flex items-center justify-center gap-1.5 text-[11px] font-semibold text-primary mb-1">
+            <Megaphone className="w-3.5 h-3.5" /> اطلاعیه از مدیر رسا
+          </div>
+          {m.content && <p className="text-sm whitespace-pre-wrap break-words">{m.content}</p>}
+          <p className="text-[10px] text-muted-foreground mt-1">{formatChatTime(m.created_at)}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // group reactions by emoji
+  const grouped = new Map<string, { count: number; mine: boolean }>();
+  reactions.forEach((r) => {
+    const cur = grouped.get(r.emoji) || { count: 0, mine: false };
+    cur.count += 1;
+    if (r.user_id === me) cur.mine = true;
+    grouped.set(r.emoji, cur);
+  });
+
   return (
-    <div className={`flex ${mine ? "justify-start" : "justify-end"} group`}>
+    <div className={`flex flex-col ${mine ? "items-start" : "items-end"} group`}>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <button
@@ -576,7 +602,7 @@ function MessageBubble({
               />
             )}
             {m.attachment_type === "audio" && signed && (
-              <audio controls src={signed} preload="auto" className="max-w-full" />
+              <VoicePlayer src={signed} mine={mine} />
             )}
             {m.attachment_type === "file" && signed && (
               <a href={signed} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="underline flex items-center gap-2">
@@ -592,7 +618,16 @@ function MessageBubble({
             </div>
           </button>
         </PopoverTrigger>
-        <PopoverContent className="w-44 p-1" align={mine ? "start" : "end"}>
+        <PopoverContent className="w-56 p-1" align={mine ? "start" : "end"}>
+          <div className="flex flex-wrap gap-1 px-1 py-1.5 border-b mb-1">
+            {REACTION_EMOJIS.map((e) => (
+              <button
+                key={e}
+                onClick={() => { setOpen(false); onReact(e); }}
+                className="text-xl w-8 h-8 rounded hover:bg-accent flex items-center justify-center"
+              >{e}</button>
+            ))}
+          </div>
           <button onClick={() => { setOpen(false); onReply(); }} className="w-full text-right flex items-center gap-2 px-3 py-2 rounded hover:bg-accent text-sm">
             <Reply className="w-4 h-4" /> پاسخ
           </button>
@@ -610,6 +645,20 @@ function MessageBubble({
           </button>
         </PopoverContent>
       </Popover>
+      {grouped.size > 0 && (
+        <div className={`flex flex-wrap gap-1 mt-1 max-w-[75%] ${mine ? "justify-start" : "justify-end"}`}>
+          {Array.from(grouped.entries()).map(([emoji, info]) => (
+            <button
+              key={emoji}
+              onClick={() => onReact(emoji)}
+              className={`text-xs rounded-full px-2 py-0.5 border transition ${info.mine ? "bg-primary/15 border-primary/40 text-primary" : "bg-card border-border hover:bg-accent"}`}
+            >
+              <span className="mr-0.5">{emoji}</span>{info.count}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
+
