@@ -88,7 +88,7 @@ function ChatView() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, username, display_name, avatar_url, is_verified, last_seen_at")
+        .select("id, username, display_name, avatar_url, is_verified, is_scammer, last_seen_at")
         .eq("id", otherId)
         .maybeSingle();
       if (error) throw error;
