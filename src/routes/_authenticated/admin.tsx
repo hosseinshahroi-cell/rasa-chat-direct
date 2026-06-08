@@ -52,12 +52,35 @@ function AdminPage() {
   const { data: stats } = useQuery({
     queryKey: ["admin-stats"],
     enabled: !!allowed,
+    refetchInterval: 30000,
     queryFn: async () => {
-      const { count } = await supabase.from("profiles").select("id", { count: "exact", head: true });
-      const { count: msgCount } = await supabase.from("messages").select("id", { count: "exact", head: true });
-      return { users: count || 0, messages: msgCount || 0 };
+      const { data, error } = await supabase.rpc("admin_stats");
+      if (error) throw error;
+      return data as Record<string, number>;
     },
   });
+
+  const { data: recent = [] } = useQuery({
+    queryKey: ["admin-recent-messages"],
+    enabled: !!allowed,
+    refetchInterval: 15000,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("admin_recent_messages", { limit_n: 30 });
+      if (error) throw error;
+      return data as Array<{
+        id: string; sender_id: string; receiver_id: string;
+        sender_username: string; receiver_username: string;
+        content: string | null; attachment_type: string | null;
+        created_at: string; deleted_for_everyone: boolean;
+      }>;
+    },
+  });
+
+  const deleteMsg = async (id: string) => {
+    const { error } = await supabase.rpc("admin_delete_message", { msg_id: id });
+    if (error) toast.error(error.message);
+    else { toast.success("پیام حذف شد"); qc.invalidateQueries({ queryKey: ["admin-recent-messages"] }); }
+  };
 
   const toggleVerified = async (u: AdminProfile) => {
     const { error } = await supabase.rpc("admin_update_user", { target_user: u.id, new_is_verified: !u.is_verified });
