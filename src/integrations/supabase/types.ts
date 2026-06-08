@@ -14,6 +14,56 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_settings: {
+        Row: {
+          key: string
+          updated_at: string
+          value: Json
+        }
+        Insert: {
+          key: string
+          updated_at?: string
+          value: Json
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          value?: Json
+        }
+        Relationships: []
+      }
+      message_reactions: {
+        Row: {
+          created_at: string
+          emoji: string
+          id: string
+          message_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          emoji: string
+          id?: string
+          message_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          emoji?: string
+          id?: string
+          message_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_reactions_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messages: {
         Row: {
           attachment_type: string | null
@@ -24,6 +74,7 @@ export type Database = {
           deleted_for_everyone: boolean
           edited_at: string | null
           id: string
+          is_announcement: boolean
           is_pinned: boolean
           read_at: string | null
           receiver_id: string
@@ -39,6 +90,7 @@ export type Database = {
           deleted_for_everyone?: boolean
           edited_at?: string | null
           id?: string
+          is_announcement?: boolean
           is_pinned?: boolean
           read_at?: string | null
           receiver_id: string
@@ -54,6 +106,7 @@ export type Database = {
           deleted_for_everyone?: boolean
           edited_at?: string | null
           id?: string
+          is_announcement?: boolean
           is_pinned?: boolean
           read_at?: string | null
           receiver_id?: string
@@ -77,8 +130,14 @@ export type Database = {
           created_at: string
           display_name: string | null
           id: string
+          is_scammer: boolean
           is_verified: boolean
           last_seen_at: string
+          lock_file: boolean
+          lock_image: boolean
+          lock_text: boolean
+          lock_video: boolean
+          lock_voice: boolean
           suspended_until: string | null
           updated_at: string
           username: string
@@ -89,8 +148,14 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id: string
+          is_scammer?: boolean
           is_verified?: boolean
           last_seen_at?: string
+          lock_file?: boolean
+          lock_image?: boolean
+          lock_text?: boolean
+          lock_video?: boolean
+          lock_voice?: boolean
           suspended_until?: string | null
           updated_at?: string
           username: string
@@ -101,8 +166,14 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id?: string
+          is_scammer?: boolean
           is_verified?: boolean
           last_seen_at?: string
+          lock_file?: boolean
+          lock_image?: boolean
+          lock_text?: boolean
+          lock_video?: boolean
+          lock_voice?: boolean
           suspended_until?: string | null
           updated_at?: string
           username?: string
@@ -136,6 +207,42 @@ export type Database = {
         }
         Relationships: []
       }
+      reports: {
+        Row: {
+          created_at: string
+          id: string
+          reason: string
+          reported_user_id: string
+          reporter_id: string
+          resolved_at: string | null
+          resolved_by: string | null
+          status: string
+          subject: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          reason: string
+          reported_user_id: string
+          reporter_id: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          subject: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          reason?: string
+          reported_user_id?: string
+          reporter_id?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          subject?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -162,7 +269,23 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_broadcast: { Args: { message: string }; Returns: number }
       admin_delete_message: { Args: { msg_id: string }; Returns: undefined }
+      admin_delete_user: { Args: { target: string }; Returns: undefined }
+      admin_list_reports: {
+        Args: { only_open?: boolean }
+        Returns: {
+          created_at: string
+          id: string
+          reason: string
+          reported_user_id: string
+          reported_username: string
+          reporter_id: string
+          reporter_username: string
+          status: string
+          subject: string
+        }[]
+      }
       admin_list_users: {
         Args: { search_query?: string }
         Returns: {
@@ -170,7 +293,13 @@ export type Database = {
           created_at: string
           display_name: string
           id: string
+          is_scammer: boolean
           is_verified: boolean
+          lock_file: boolean
+          lock_image: boolean
+          lock_text: boolean
+          lock_video: boolean
+          lock_voice: boolean
           suspended_until: string
           username: string
         }[]
@@ -189,6 +318,23 @@ export type Database = {
           sender_username: string
         }[]
       }
+      admin_resolve_report: {
+        Args: { new_status?: string; report_id: string }
+        Returns: undefined
+      }
+      admin_set_global_locks: { Args: { locks: Json }; Returns: undefined }
+      admin_set_user_flags: {
+        Args: {
+          p_is_scammer?: boolean
+          p_lock_file?: boolean
+          p_lock_image?: boolean
+          p_lock_text?: boolean
+          p_lock_video?: boolean
+          p_lock_voice?: boolean
+          target: string
+        }
+        Returns: undefined
+      }
       admin_stats: { Args: never; Returns: Json }
       admin_update_user: {
         Args: {
@@ -205,6 +351,10 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      report_user: {
+        Args: { p_reason: string; p_subject: string; reported: string }
+        Returns: string
       }
       touch_last_seen: { Args: never; Returns: undefined }
     }
