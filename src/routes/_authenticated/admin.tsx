@@ -6,11 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { UserAvatar } from "@/components/UserAvatar";
-import { ArrowRight, Search, BadgeCheck, Ban, ShieldOff, Users } from "lucide-react";
+import { ArrowRight, Search, BadgeCheck, Ban, ShieldOff, Users, MessageSquare, Activity, UserPlus, Wifi, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter
 } from "@/components/ui/dialog";
+import { formatRelativeTime } from "@/lib/format";
 
 export const Route = createFileRoute("/_authenticated/admin")({
   head: () => ({ meta: [{ title: "پنل ادمین - رسا" }] }),
