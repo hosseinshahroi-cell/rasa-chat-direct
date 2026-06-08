@@ -114,7 +114,7 @@ function AdminPage() {
     queryFn: async () => {
       const { data, error } = await supabase.from("app_settings").select("value").eq("key", "global_locks").maybeSingle();
       if (error) throw error;
-      return (data?.value as GlobalLocks) || { text: false, voice: false, video: false, file: false, image: false };
+      return (data?.value as unknown as GlobalLocks) || { text: false, voice: false, video: false, file: false, image: false };
     },
   });
 
