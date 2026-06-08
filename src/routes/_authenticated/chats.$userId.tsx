@@ -122,10 +122,6 @@ function ChatView() {
 
   const sendMessage = async (content: string | null, attachment?: { url: string; type: string }) => {
     if (!me) return;
-    if (other?.suspended_until && new Date(other.suspended_until) > new Date()) {
-      toast.error("این کاربر در حال حاضر تعلیق شده است");
-      return;
-    }
     setSending(true);
     try {
       const { error } = await supabase.from("messages").insert({
