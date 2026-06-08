@@ -196,11 +196,24 @@ function ChatView() {
           <Link to="/chats">
             <Button size="icon" variant="ghost"><ArrowRight className="w-5 h-5" /></Button>
           </Link>
-          {other && (
+          {me === otherId ? (
+            <>
+              <div className="w-10 h-10 rounded-full bg-primary/15 text-primary flex items-center justify-center">
+                <Bookmark className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold truncate">پیام‌های ذخیره شده</p>
+                <p className="text-xs text-muted-foreground truncate">فقط شما این پیام‌ها را می‌بینید</p>
+              </div>
+            </>
+          ) : other && (
             <>
               <UserAvatar avatarPath={other.avatar_url} name={other.display_name || other.username} verified={other.is_verified} className="w-10 h-10" />
               <div className="flex-1 min-w-0">
-                <p className="font-semibold truncate">{other.display_name || other.username}</p>
+                <p className="font-semibold truncate flex items-center gap-1">
+                  {other.display_name || other.username}
+                  {other.is_verified && <BadgeCheck className="w-4 h-4 text-primary fill-primary stroke-background shrink-0" />}
+                </p>
                 <p className="text-xs text-muted-foreground truncate" dir="ltr">@{other.username}</p>
               </div>
             </>
