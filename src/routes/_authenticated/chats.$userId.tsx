@@ -8,6 +8,7 @@ import { UserAvatar } from "@/components/UserAvatar";
 import {
   ArrowRight, Send, Paperclip, Image as ImageIcon, Mic, StopCircle, Loader2,
   Bookmark, BadgeCheck, Reply, Pin, Trash2, Pencil, X, Download, Check, CheckCheck, PinOff,
+  MoreVertical, Flag, ShieldAlert, Megaphone,
 } from "lucide-react";
 import { formatChatTime, formatLastSeen } from "@/lib/format";
 import { toast } from "sonner";
@@ -19,6 +20,12 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { VoicePlayer } from "@/components/VoicePlayer";
+import { ReportDialog } from "@/components/ReportDialog";
+
+const REACTION_EMOJIS = ["❤️", "👍", "👎", "😂", "😮", "😢", "🔥", "🙏"];
+
+interface Reaction { id: string; message_id: string; user_id: string; emoji: string; }
 
 export const Route = createFileRoute("/_authenticated/chats/$userId")({
   head: () => ({ meta: [{ title: "گفتگو - رسا" }] }),
@@ -39,6 +46,7 @@ interface Message {
   deleted_for_everyone: boolean;
   deleted_for: string[];
   is_pinned: boolean;
+  is_announcement: boolean;
 }
 
 function ChatView() {
@@ -53,6 +61,7 @@ function ChatView() {
   const [editing, setEditing] = useState<Message | null>(null);
   const [imageView, setImageView] = useState<{ url: string; name: string } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Message | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLInputElement>(null);
   const recRef = useRef<MediaRecorder | null>(null);
@@ -79,7 +88,7 @@ function ChatView() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, username, display_name, avatar_url, is_verified, last_seen_at")
+        .select("id, username, display_name, avatar_url, is_verified, is_scammer, last_seen_at")
         .eq("id", otherId)
         .maybeSingle();
       if (error) throw error;
@@ -113,7 +122,45 @@ function ChatView() {
     [messages],
   );
 
-  // realtime: INSERT + UPDATE
+  const messageIds = useMemo(() => messages.map((m) => m.id), [messages]);
+
+  const { data: reactions = [] } = useQuery<Reaction[]>({
+    queryKey: ["reactions", me, otherId, messageIds.length],
+    enabled: !!me && messageIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("message_reactions").select("*").in("message_id", messageIds);
+      if (error) throw error;
+      return (data || []) as Reaction[];
+    },
+  });
+
+  const reactionsByMessage = useMemo(() => {
+    const map = new Map<string, Reaction[]>();
+    reactions.forEach((r) => {
+      const arr = map.get(r.message_id) || [];
+      arr.push(r);
+      map.set(r.message_id, arr);
+    });
+    return map;
+  }, [reactions]);
+
+  const toggleReaction = async (messageId: string, emoji: string) => {
+    if (!me) return;
+    const existing = reactions.find((r) => r.message_id === messageId && r.user_id === me && r.emoji === emoji);
+    if (existing) {
+      await supabase.from("message_reactions").delete().eq("id", existing.id);
+    } else {
+      // remove user's other reaction on this message first (one per user per message)
+      const mine = reactions.find((r) => r.message_id === messageId && r.user_id === me);
+      if (mine) await supabase.from("message_reactions").delete().eq("id", mine.id);
+      const { error } = await supabase.from("message_reactions").insert({ message_id: messageId, user_id: me, emoji });
+      if (error) toast.error(error.message);
+    }
+    qc.invalidateQueries({ queryKey: ["reactions", me, otherId] });
+  };
+
+  // realtime: messages + reactions
   useEffect(() => {
     if (!me) return;
     const ch = supabase
@@ -127,6 +174,9 @@ function ChatView() {
         ) {
           qc.invalidateQueries({ queryKey: ["messages", me, otherId] });
         }
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "message_reactions" }, () => {
+        qc.invalidateQueries({ queryKey: ["reactions", me, otherId] });
       })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
@@ -304,14 +354,37 @@ function ChatView() {
                 <p className="font-semibold truncate flex items-center gap-1">
                   {other.display_name || other.username}
                   {other.is_verified && <BadgeCheck className="w-4 h-4 text-primary fill-primary stroke-background shrink-0" />}
+                  {other.is_scammer && (
+                    <span className="inline-flex items-center gap-0.5 text-[10px] bg-destructive/15 text-destructive px-1.5 py-0.5 rounded-full">
+                      <ShieldAlert className="w-3 h-3" /> کلاهبردار
+                    </span>
+                  )}
                 </p>
                 <p className={`text-xs truncate ${formatLastSeen(other.last_seen_at) === "آنلاین" ? "text-primary" : "text-muted-foreground"}`}>
                   {formatLastSeen(other.last_seen_at)}
                 </p>
               </div>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button size="icon" variant="ghost"><MoreVertical className="w-5 h-5" /></Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-44 p-1" align="end">
+                  <button onClick={() => setReportOpen(true)} className="w-full text-right flex items-center gap-2 px-3 py-2 rounded hover:bg-accent text-sm text-destructive">
+                    <Flag className="w-4 h-4" /> گزارش کاربر
+                  </button>
+                </PopoverContent>
+              </Popover>
             </>
           )}
         </div>
+        {other?.is_scammer && (
+          <div className="bg-destructive/10 border-t border-destructive/20">
+            <div className="max-w-2xl mx-auto px-3 py-1.5 text-xs text-destructive flex items-center gap-1.5">
+              <ShieldAlert className="w-3.5 h-3.5" />
+              این کاربر به عنوان کلاهبردار توسط مدیران علامت‌گذاری شده است.
+            </div>
+          </div>
+        )}
         {pinned.length > 0 && (
           <div className="border-t bg-card/70">
             <div className="max-w-2xl mx-auto px-3 py-1.5 flex items-center gap-2 text-xs">
@@ -343,6 +416,9 @@ function ChatView() {
                 mine={mine}
                 signed={signed}
                 replied={replied}
+                reactions={reactionsByMessage.get(m.id) || []}
+                me={me!}
+                onReact={(emoji) => toggleReaction(m.id, emoji)}
                 onReply={() => { setReplyTo(m); setEditing(null); }}
                 onEdit={() => beginEdit(m)}
                 onPin={() => togglePin(m)}
@@ -353,6 +429,9 @@ function ChatView() {
           })}
         </div>
       </div>
+
+      {!isSelf && other && <ReportDialog open={reportOpen} onOpenChange={setReportOpen} reportedUserId={other.id} /> }
+
 
       {(replyTo || editing) && (
         <div className="bg-accent/40 border-t">
@@ -446,12 +525,15 @@ function ChatView() {
 }
 
 function MessageBubble({
-  m, mine, signed, replied, onReply, onEdit, onPin, onDelete, onImageClick,
+  m, mine, signed, replied, reactions, me, onReact, onReply, onEdit, onPin, onDelete, onImageClick,
 }: {
   m: Message;
   mine: boolean;
   signed: string | null;
   replied: Message | null | undefined;
+  reactions: Reaction[];
+  me: string;
+  onReact: (emoji: string) => void;
   onReply: () => void;
   onEdit: () => void;
   onPin: () => void;
@@ -470,8 +552,31 @@ function MessageBubble({
     );
   }
 
+  if (m.is_announcement) {
+    return (
+      <div className="flex justify-center my-2">
+        <div className="max-w-[90%] rounded-xl px-3 py-2 bg-primary/10 border border-primary/30 text-center">
+          <div className="flex items-center justify-center gap-1.5 text-[11px] font-semibold text-primary mb-1">
+            <Megaphone className="w-3.5 h-3.5" /> اطلاعیه از مدیر رسا
+          </div>
+          {m.content && <p className="text-sm whitespace-pre-wrap break-words">{m.content}</p>}
+          <p className="text-[10px] text-muted-foreground mt-1">{formatChatTime(m.created_at)}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // group reactions by emoji
+  const grouped = new Map<string, { count: number; mine: boolean }>();
+  reactions.forEach((r) => {
+    const cur = grouped.get(r.emoji) || { count: 0, mine: false };
+    cur.count += 1;
+    if (r.user_id === me) cur.mine = true;
+    grouped.set(r.emoji, cur);
+  });
+
   return (
-    <div className={`flex ${mine ? "justify-start" : "justify-end"} group`}>
+    <div className={`flex flex-col ${mine ? "items-start" : "items-end"} group`}>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <button
@@ -497,7 +602,7 @@ function MessageBubble({
               />
             )}
             {m.attachment_type === "audio" && signed && (
-              <audio controls src={signed} preload="auto" className="max-w-full" />
+              <VoicePlayer src={signed} mine={mine} />
             )}
             {m.attachment_type === "file" && signed && (
               <a href={signed} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="underline flex items-center gap-2">
@@ -513,7 +618,16 @@ function MessageBubble({
             </div>
           </button>
         </PopoverTrigger>
-        <PopoverContent className="w-44 p-1" align={mine ? "start" : "end"}>
+        <PopoverContent className="w-56 p-1" align={mine ? "start" : "end"}>
+          <div className="flex flex-wrap gap-1 px-1 py-1.5 border-b mb-1">
+            {REACTION_EMOJIS.map((e) => (
+              <button
+                key={e}
+                onClick={() => { setOpen(false); onReact(e); }}
+                className="text-xl w-8 h-8 rounded hover:bg-accent flex items-center justify-center"
+              >{e}</button>
+            ))}
+          </div>
           <button onClick={() => { setOpen(false); onReply(); }} className="w-full text-right flex items-center gap-2 px-3 py-2 rounded hover:bg-accent text-sm">
             <Reply className="w-4 h-4" /> پاسخ
           </button>
@@ -531,6 +645,20 @@ function MessageBubble({
           </button>
         </PopoverContent>
       </Popover>
+      {grouped.size > 0 && (
+        <div className={`flex flex-wrap gap-1 mt-1 max-w-[75%] ${mine ? "justify-start" : "justify-end"}`}>
+          {Array.from(grouped.entries()).map(([emoji, info]) => (
+            <button
+              key={emoji}
+              onClick={() => onReact(emoji)}
+              className={`text-xs rounded-full px-2 py-0.5 border transition ${info.mine ? "bg-primary/15 border-primary/40 text-primary" : "bg-card border-border hover:bg-accent"}`}
+            >
+              <span className="mr-0.5">{emoji}</span>{info.count}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
+
