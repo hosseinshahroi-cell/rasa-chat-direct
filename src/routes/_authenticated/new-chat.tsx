@@ -73,7 +73,10 @@ function NewChat() {
               >
                 <UserAvatar avatarPath={p.avatar_url} name={p.display_name || p.username} verified={p.is_verified} className="w-11 h-11" />
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">{p.display_name || p.username}</p>
+                  <p className="font-medium truncate flex items-center gap-1">
+                    {p.display_name || p.username}
+                    {p.is_verified && <BadgeCheck className="w-4 h-4 text-primary fill-primary stroke-background shrink-0" />}
+                  </p>
                   <p className="text-xs text-muted-foreground truncate" dir="ltr">@{p.username}</p>
                 </div>
               </button>
