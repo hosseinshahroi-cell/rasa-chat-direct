@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { UserAvatar } from "@/components/UserAvatar";
-import { ArrowRight, Search, Loader2 } from "lucide-react";
+import { ArrowRight, Search, Loader2, BadgeCheck } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/new-chat")({
   head: () => ({ meta: [{ title: "گفتگوی جدید - رسا" }] }),
