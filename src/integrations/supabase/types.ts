@@ -136,6 +136,27 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_list_users: {
+        Args: { search_query?: string }
+        Returns: {
+          avatar_url: string
+          created_at: string
+          display_name: string
+          id: string
+          is_verified: boolean
+          suspended_until: string
+          username: string
+        }[]
+      }
+      admin_update_user: {
+        Args: {
+          clear_suspension?: boolean
+          new_is_verified?: boolean
+          new_suspended_until?: string
+          target_user: string
+        }
+        Returns: undefined
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

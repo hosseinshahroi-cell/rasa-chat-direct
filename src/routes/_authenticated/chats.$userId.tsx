@@ -49,7 +49,7 @@ function ChatView() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, username, display_name, avatar_url, is_verified, suspended_until")
+        .select("id, username, display_name, avatar_url, is_verified")
         .eq("id", otherId)
         .maybeSingle();
       if (error) throw error;
@@ -122,10 +122,6 @@ function ChatView() {
 
   const sendMessage = async (content: string | null, attachment?: { url: string; type: string }) => {
     if (!me) return;
-    if (other?.suspended_until && new Date(other.suspended_until) > new Date()) {
-      toast.error("این کاربر در حال حاضر تعلیق شده است");
-      return;
-    }
     setSending(true);
     try {
       const { error } = await supabase.from("messages").insert({
@@ -187,7 +183,7 @@ function ChatView() {
   };
   const stopRecord = () => { recRef.current?.stop(); setRecording(false); };
 
-  const isSuspended = other?.suspended_until && new Date(other.suspended_until) > new Date();
+  const isSuspended = false;
 
   return (
     <div className="flex flex-col h-screen bg-background">

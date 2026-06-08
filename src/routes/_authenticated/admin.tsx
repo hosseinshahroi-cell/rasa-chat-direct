@@ -42,11 +42,9 @@ function AdminPage() {
     queryKey: ["admin-users", q],
     enabled: !!allowed,
     queryFn: async () => {
-      let query = supabase.from("profiles").select("id, username, display_name, avatar_url, is_verified, suspended_until, created_at").order("created_at", { ascending: false }).limit(200);
-      if (q.trim()) query = query.or(`username.ilike.%${q}%,display_name.ilike.%${q}%`);
-      const { data, error } = await query;
+      const { data, error } = await supabase.rpc("admin_list_users", { search_query: q.trim() });
       if (error) throw error;
-      return data as AdminProfile[];
+      return (data || []) as AdminProfile[];
     },
   });
 
@@ -61,13 +59,17 @@ function AdminPage() {
   });
 
   const toggleVerified = async (u: AdminProfile) => {
-    const { error } = await supabase.from("profiles").update({ is_verified: !u.is_verified }).eq("id", u.id);
+    const { error } = await supabase.rpc("admin_update_user", { target_user: u.id, new_is_verified: !u.is_verified });
     if (error) toast.error(error.message);
     else { toast.success(u.is_verified ? "تیک آبی برداشته شد" : "تیک آبی داده شد"); qc.invalidateQueries({ queryKey: ["admin-users"] }); }
   };
 
   const suspend = async (u: AdminProfile, until: string | null) => {
-    const { error } = await supabase.from("profiles").update({ suspended_until: until }).eq("id", u.id);
+    const { error } = await supabase.rpc("admin_update_user", {
+      target_user: u.id,
+      new_suspended_until: until ?? undefined,
+      clear_suspension: until === null,
+    });
     if (error) toast.error(error.message);
     else { toast.success(until ? "کاربر تعلیق شد" : "تعلیق برداشته شد"); qc.invalidateQueries({ queryKey: ["admin-users"] }); }
   };
