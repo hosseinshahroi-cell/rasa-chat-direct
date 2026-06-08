@@ -122,7 +122,45 @@ function ChatView() {
     [messages],
   );
 
-  // realtime: INSERT + UPDATE
+  const messageIds = useMemo(() => messages.map((m) => m.id), [messages]);
+
+  const { data: reactions = [] } = useQuery<Reaction[]>({
+    queryKey: ["reactions", me, otherId, messageIds.length],
+    enabled: !!me && messageIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("message_reactions").select("*").in("message_id", messageIds);
+      if (error) throw error;
+      return (data || []) as Reaction[];
+    },
+  });
+
+  const reactionsByMessage = useMemo(() => {
+    const map = new Map<string, Reaction[]>();
+    reactions.forEach((r) => {
+      const arr = map.get(r.message_id) || [];
+      arr.push(r);
+      map.set(r.message_id, arr);
+    });
+    return map;
+  }, [reactions]);
+
+  const toggleReaction = async (messageId: string, emoji: string) => {
+    if (!me) return;
+    const existing = reactions.find((r) => r.message_id === messageId && r.user_id === me && r.emoji === emoji);
+    if (existing) {
+      await supabase.from("message_reactions").delete().eq("id", existing.id);
+    } else {
+      // remove user's other reaction on this message first (one per user per message)
+      const mine = reactions.find((r) => r.message_id === messageId && r.user_id === me);
+      if (mine) await supabase.from("message_reactions").delete().eq("id", mine.id);
+      const { error } = await supabase.from("message_reactions").insert({ message_id: messageId, user_id: me, emoji });
+      if (error) toast.error(error.message);
+    }
+    qc.invalidateQueries({ queryKey: ["reactions", me, otherId] });
+  };
+
+  // realtime: messages + reactions
   useEffect(() => {
     if (!me) return;
     const ch = supabase
@@ -136,6 +174,9 @@ function ChatView() {
         ) {
           qc.invalidateQueries({ queryKey: ["messages", me, otherId] });
         }
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "message_reactions" }, () => {
+        qc.invalidateQueries({ queryKey: ["reactions", me, otherId] });
       })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
