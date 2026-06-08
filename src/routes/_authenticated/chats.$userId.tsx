@@ -46,6 +46,7 @@ interface Message {
   deleted_for_everyone: boolean;
   deleted_for: string[];
   is_pinned: boolean;
+  is_announcement: boolean;
 }
 
 function ChatView() {
@@ -60,6 +61,7 @@ function ChatView() {
   const [editing, setEditing] = useState<Message | null>(null);
   const [imageView, setImageView] = useState<{ url: string; name: string } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Message | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLInputElement>(null);
   const recRef = useRef<MediaRecorder | null>(null);
