@@ -67,7 +67,7 @@ function AdminPage() {
   const suspend = async (u: AdminProfile, until: string | null) => {
     const { error } = await supabase.rpc("admin_update_user", {
       target_user: u.id,
-      new_suspended_until: until,
+      new_suspended_until: until ?? undefined,
       clear_suspension: until === null,
     });
     if (error) toast.error(error.message);
