@@ -8,6 +8,7 @@ import { UserAvatar } from "@/components/UserAvatar";
 import {
   ArrowRight, Send, Paperclip, Image as ImageIcon, Mic, StopCircle, Loader2,
   Bookmark, BadgeCheck, Reply, Pin, Trash2, Pencil, X, Download, Check, CheckCheck, PinOff,
+  MoreVertical, Flag, ShieldAlert, SmilePlus, Megaphone,
 } from "lucide-react";
 import { formatChatTime, formatLastSeen } from "@/lib/format";
 import { toast } from "sonner";
@@ -19,6 +20,12 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { VoicePlayer } from "@/components/VoicePlayer";
+import { ReportDialog } from "@/components/ReportDialog";
+
+const REACTION_EMOJIS = ["❤️", "👍", "👎", "😂", "😮", "😢", "🔥", "🙏"];
+
+interface Reaction { id: string; message_id: string; user_id: string; emoji: string; }
 
 export const Route = createFileRoute("/_authenticated/chats/$userId")({
   head: () => ({ meta: [{ title: "گفتگو - رسا" }] }),
