@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/UserAvatar";
-import { MessageCirclePlus, Settings, Shield, MessageCircle, LogOut } from "lucide-react";
+import { MessageCirclePlus, Settings, Shield, MessageCircle, LogOut, Bookmark, BadgeCheck } from "lucide-react";
 import { formatRelativeTime } from "@/lib/format";
 
 export const Route = createFileRoute("/_authenticated/chats/")({
