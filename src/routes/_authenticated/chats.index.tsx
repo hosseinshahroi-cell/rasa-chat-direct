@@ -7,7 +7,7 @@ import { UserAvatar } from "@/components/UserAvatar";
 import { MessageCirclePlus, Settings, Shield, MessageCircle, LogOut } from "lucide-react";
 import { formatRelativeTime } from "@/lib/format";
 
-export const Route = createFileRoute("/_authenticated/chats")({
+export const Route = createFileRoute("/_authenticated/chats/")({
   head: () => ({ meta: [{ title: "گفتگوها - رسا" }] }),
   component: ChatsList,
 });
