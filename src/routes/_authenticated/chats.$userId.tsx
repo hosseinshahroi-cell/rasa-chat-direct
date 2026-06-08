@@ -1,13 +1,24 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { UserAvatar } from "@/components/UserAvatar";
-import { ArrowRight, Send, Paperclip, Image as ImageIcon, Mic, StopCircle, Loader2, Bookmark, BadgeCheck } from "lucide-react";
-import { formatChatTime } from "@/lib/format";
+import {
+  ArrowRight, Send, Paperclip, Image as ImageIcon, Mic, StopCircle, Loader2,
+  Bookmark, BadgeCheck, Reply, Pin, Trash2, Pencil, X, Download, Check, CheckCheck, PinOff,
+} from "lucide-react";
+import { formatChatTime, formatLastSeen } from "@/lib/format";
 import { toast } from "sonner";
+import {
+  Popover, PopoverContent, PopoverTrigger,
+} from "@/components/ui/popover";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export const Route = createFileRoute("/_authenticated/chats/$userId")({
   head: () => ({ meta: [{ title: "گفتگو - رسا" }] }),
@@ -23,33 +34,52 @@ interface Message {
   attachment_type: string | null;
   created_at: string;
   read_at: string | null;
+  reply_to_id: string | null;
+  edited_at: string | null;
+  deleted_for_everyone: boolean;
+  deleted_for: string[];
+  is_pinned: boolean;
 }
 
 function ChatView() {
   const { userId: otherId } = Route.useParams();
-  const navigate = useNavigate();
   const qc = useQueryClient();
   const [me, setMe] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [recording, setRecording] = useState(false);
   const [signedAttachments, setSignedAttachments] = useState<Record<string, string>>({});
+  const [replyTo, setReplyTo] = useState<Message | null>(null);
+  const [editing, setEditing] = useState<Message | null>(null);
+  const [imageView, setImageView] = useState<{ url: string; name: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Message | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLInputElement>(null);
   const recRef = useRef<MediaRecorder | null>(null);
   const recChunks = useRef<Blob[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const isSelf = me === otherId;
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setMe(data.user?.id ?? null));
   }, []);
 
+  // last-seen heartbeat
+  useEffect(() => {
+    if (!me) return;
+    supabase.rpc("touch_last_seen");
+    const t = setInterval(() => supabase.rpc("touch_last_seen"), 30000);
+    return () => clearInterval(t);
+  }, [me]);
+
   const { data: other } = useQuery({
     queryKey: ["profile", otherId],
+    enabled: !isSelf,
+    refetchInterval: 30000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, username, display_name, avatar_url, is_verified")
+        .select("id, username, display_name, avatar_url, is_verified, last_seen_at")
         .eq("id", otherId)
         .maybeSingle();
       if (error) throw error;
@@ -68,32 +98,44 @@ function ChatView() {
         .order("created_at", { ascending: true })
         .limit(500);
       if (error) throw error;
-      return data as Message[];
+      return (data as Message[]).filter((m) => !(m.deleted_for || []).includes(me!));
     },
   });
 
-  // realtime
+  const messageById = useMemo(() => {
+    const map = new Map<string, Message>();
+    messages.forEach((m) => map.set(m.id, m));
+    return map;
+  }, [messages]);
+
+  const pinned = useMemo(
+    () => messages.filter((m) => m.is_pinned && !m.deleted_for_everyone),
+    [messages],
+  );
+
+  // realtime: INSERT + UPDATE
   useEffect(() => {
     if (!me) return;
     const ch = supabase
       .channel(`chat-${me}-${otherId}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => {
-        const m = payload.new as Message;
+      .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, (payload) => {
+        const m = (payload.new ?? payload.old) as Message;
         if (
           (m.sender_id === me && m.receiver_id === otherId) ||
-          (m.sender_id === otherId && m.receiver_id === me)
+          (m.sender_id === otherId && m.receiver_id === me) ||
+          (isSelf && m.sender_id === me && m.receiver_id === me)
         ) {
           qc.invalidateQueries({ queryKey: ["messages", me, otherId] });
         }
       })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [me, otherId, qc]);
+  }, [me, otherId, qc, isSelf]);
 
   // mark as read
   useEffect(() => {
     if (!me || !messages.length) return;
-    const unread = messages.filter((m) => m.receiver_id === me && !m.read_at).map((m) => m.id);
+    const unread = messages.filter((m) => m.receiver_id === me && m.sender_id !== me && !m.read_at).map((m) => m.id);
     if (unread.length) {
       supabase.from("messages").update({ read_at: new Date().toISOString() }).in("id", unread).then(() => {
         qc.invalidateQueries({ queryKey: ["chats"] });
@@ -101,14 +143,15 @@ function ChatView() {
     }
   }, [messages, me, qc]);
 
-  // scroll to bottom
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages.length]);
 
   // sign attachments
   useEffect(() => {
-    const toSign = messages.filter((m) => m.attachment_url && !signedAttachments[m.attachment_url]).map((m) => m.attachment_url!);
+    const toSign = messages
+      .filter((m) => m.attachment_url && !m.deleted_for_everyone && !signedAttachments[m.attachment_url])
+      .map((m) => m.attachment_url!);
     if (!toSign.length) return;
     (async () => {
       const updates: Record<string, string> = {};
@@ -130,16 +173,32 @@ function ChatView() {
         content,
         attachment_url: attachment?.url ?? null,
         attachment_type: attachment?.type ?? null,
+        reply_to_id: replyTo?.id ?? null,
       });
       if (error) throw error;
       setText("");
+      setReplyTo(null);
       qc.invalidateQueries({ queryKey: ["messages", me, otherId] });
       qc.invalidateQueries({ queryKey: ["chats"] });
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "خطا در ارسال");
+      const msg = e instanceof Error ? e.message : "خطا در ارسال";
+      toast.error(msg.includes("suspended") ? "حساب شما تعلیق شده است" : msg);
     } finally {
       setSending(false);
     }
+  };
+
+  const saveEdit = async () => {
+    if (!editing || !text.trim()) return;
+    setSending(true);
+    const { error } = await supabase.from("messages")
+      .update({ content: text.trim(), edited_at: new Date().toISOString() })
+      .eq("id", editing.id);
+    setSending(false);
+    if (error) { toast.error(error.message); return; }
+    setEditing(null);
+    setText("");
+    qc.invalidateQueries({ queryKey: ["messages", me, otherId] });
   };
 
   const uploadAndSend = async (file: File, type: "image" | "audio" | "file") => {
@@ -147,10 +206,7 @@ function ChatView() {
     const ext = file.name.split(".").pop() || "bin";
     const path = `${me}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
     const { error } = await supabase.storage.from("chat-attachments").upload(path, file);
-    if (error) {
-      toast.error("خطا در آپلود فایل");
-      return;
-    }
+    if (error) { toast.error("خطا در آپلود فایل"); return; }
     await sendMessage(null, { url: path, type });
   };
 
@@ -183,7 +239,46 @@ function ChatView() {
   };
   const stopRecord = () => { recRef.current?.stop(); setRecording(false); };
 
-  const isSuspended = false;
+  const togglePin = async (m: Message) => {
+    const { error } = await supabase.from("messages").update({ is_pinned: !m.is_pinned }).eq("id", m.id);
+    if (error) toast.error(error.message);
+    else { toast.success(m.is_pinned ? "از سنجاق برداشته شد" : "سنجاق شد"); qc.invalidateQueries({ queryKey: ["messages", me, otherId] }); }
+  };
+
+  const deleteForMe = async (m: Message) => {
+    const next = Array.from(new Set([...(m.deleted_for || []), me!]));
+    const { error } = await supabase.from("messages").update({ deleted_for: next }).eq("id", m.id);
+    if (error) toast.error(error.message);
+    else qc.invalidateQueries({ queryKey: ["messages", me, otherId] });
+    setDeleteTarget(null);
+  };
+
+  const deleteForEveryone = async (m: Message) => {
+    const { error } = await supabase.from("messages").update({
+      deleted_for_everyone: true,
+      content: null, attachment_url: null, attachment_type: null,
+    }).eq("id", m.id);
+    if (error) toast.error(error.message);
+    else qc.invalidateQueries({ queryKey: ["messages", me, otherId] });
+    setDeleteTarget(null);
+  };
+
+  const beginEdit = (m: Message) => {
+    setEditing(m);
+    setReplyTo(null);
+    setText(m.content || "");
+  };
+
+  const cancelCompose = () => {
+    setEditing(null);
+    setReplyTo(null);
+    setText("");
+  };
+
+  const submitText = () => {
+    if (editing) saveEdit();
+    else if (text.trim()) sendMessage(text.trim());
+  };
 
   return (
     <div className="flex flex-col h-screen bg-background">
@@ -192,7 +287,7 @@ function ChatView() {
           <Link to="/chats">
             <Button size="icon" variant="ghost"><ArrowRight className="w-5 h-5" /></Button>
           </Link>
-          {me === otherId ? (
+          {isSelf ? (
             <>
               <div className="w-10 h-10 rounded-full bg-primary/15 text-primary flex items-center justify-center">
                 <Bookmark className="w-5 h-5" />
@@ -210,14 +305,22 @@ function ChatView() {
                   {other.display_name || other.username}
                   {other.is_verified && <BadgeCheck className="w-4 h-4 text-primary fill-primary stroke-background shrink-0" />}
                 </p>
-                <p className="text-xs text-muted-foreground truncate" dir="ltr">@{other.username}</p>
+                <p className={`text-xs truncate ${formatLastSeen(other.last_seen_at) === "آنلاین" ? "text-primary" : "text-muted-foreground"}`}>
+                  {formatLastSeen(other.last_seen_at)}
+                </p>
               </div>
             </>
           )}
         </div>
-        {isSuspended && (
-          <div className="bg-destructive/10 text-destructive text-xs text-center py-1.5">
-            این کاربر تعلیق شده است
+        {pinned.length > 0 && (
+          <div className="border-t bg-card/70">
+            <div className="max-w-2xl mx-auto px-3 py-1.5 flex items-center gap-2 text-xs">
+              <Pin className="w-3.5 h-3.5 text-primary shrink-0" />
+              <span className="font-medium text-primary shrink-0">سنجاق شده:</span>
+              <span className="truncate text-muted-foreground">
+                {pinned[pinned.length - 1].content || (pinned[pinned.length - 1].attachment_type === "image" ? "🖼 عکس" : pinned[pinned.length - 1].attachment_type === "audio" ? "🎤 پیام صوتی" : "📎 فایل")}
+              </span>
+            </div>
           </div>
         )}
       </header>
@@ -232,75 +335,202 @@ function ChatView() {
           {messages.map((m) => {
             const mine = m.sender_id === me;
             const signed = m.attachment_url ? signedAttachments[m.attachment_url] : null;
+            const replied = m.reply_to_id ? messageById.get(m.reply_to_id) : null;
             return (
-              <div key={m.id} className={`flex ${mine ? "justify-start" : "justify-end"}`}>
-                <div
-                  className={`max-w-[75%] rounded-2xl px-3 py-2 ${
-                    mine
-                      ? "bg-[color:var(--color-chat-bubble-me)] text-[color:var(--color-chat-bubble-me-foreground)] rounded-bl-sm"
-                      : "bg-[color:var(--color-chat-bubble-other)] text-[color:var(--color-chat-bubble-other-foreground)] rounded-br-sm"
-                  }`}
-                >
-                  {m.attachment_type === "image" && signed && (
-                    <img src={signed} alt="" className="rounded-lg max-h-64 mb-1" />
-                  )}
-                  {m.attachment_type === "audio" && signed && (
-                    <audio controls src={signed} className="max-w-full" />
-                  )}
-                  {m.attachment_type === "file" && signed && (
-                    <a href={signed} target="_blank" rel="noopener noreferrer" className="underline flex items-center gap-2">
-                      <Paperclip className="w-4 h-4" /> دانلود فایل
-                    </a>
-                  )}
-                  {m.content && <p className="whitespace-pre-wrap break-words text-sm">{m.content}</p>}
-                  <div className={`text-[10px] mt-1 ${mine ? "opacity-80" : "text-muted-foreground"}`}>
-                    {formatChatTime(m.created_at)}
-                  </div>
-                </div>
-              </div>
+              <MessageBubble
+                key={m.id}
+                m={m}
+                mine={mine}
+                signed={signed}
+                replied={replied}
+                onReply={() => { setReplyTo(m); setEditing(null); }}
+                onEdit={() => beginEdit(m)}
+                onPin={() => togglePin(m)}
+                onDelete={() => setDeleteTarget(m)}
+                onImageClick={(url) => setImageView({ url, name: m.attachment_url || "image" })}
+              />
             );
           })}
         </div>
       </div>
 
+      {(replyTo || editing) && (
+        <div className="bg-accent/40 border-t">
+          <div className="max-w-2xl mx-auto px-3 py-2 flex items-center gap-2">
+            {editing ? <Pencil className="w-4 h-4 text-primary shrink-0" /> : <Reply className="w-4 h-4 text-primary shrink-0" />}
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-primary">{editing ? "در حال ویرایش" : "پاسخ به"}</p>
+              <p className="text-xs text-muted-foreground truncate">
+                {(editing || replyTo)!.content || "پیوست"}
+              </p>
+            </div>
+            <Button size="icon" variant="ghost" onClick={cancelCompose}><X className="w-4 h-4" /></Button>
+          </div>
+        </div>
+      )}
+
       <div className="sticky bottom-0 bg-card/95 backdrop-blur border-t">
         <div className="max-w-2xl mx-auto p-2 flex items-end gap-1.5">
-          <Button size="icon" variant="ghost" onClick={() => fileRef.current?.click()} disabled={!!isSuspended}>
-            <Paperclip className="w-5 h-5" />
-          </Button>
-          <Button size="icon" variant="ghost" onClick={() => imgRef.current?.click()} disabled={!!isSuspended}>
-            <ImageIcon className="w-5 h-5" />
-          </Button>
-          <input ref={fileRef} type="file" hidden onChange={(e) => onFile(e, "file")} />
-          <input ref={imgRef} type="file" accept="image/*" hidden onChange={(e) => onFile(e, "image")} />
+          {!editing && (
+            <>
+              <Button size="icon" variant="ghost" onClick={() => fileRef.current?.click()}>
+                <Paperclip className="w-5 h-5" />
+              </Button>
+              <Button size="icon" variant="ghost" onClick={() => imgRef.current?.click()}>
+                <ImageIcon className="w-5 h-5" />
+              </Button>
+              <input ref={fileRef} type="file" hidden onChange={(e) => onFile(e, "file")} />
+              <input ref={imgRef} type="file" accept="image/*" hidden onChange={(e) => onFile(e, "image")} />
+            </>
+          )}
           <Input
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && text.trim()) {
+              if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                sendMessage(text.trim());
+                submitText();
               }
             }}
-            placeholder={isSuspended ? "ارسال غیرفعال" : "پیام..."}
+            placeholder={editing ? "متن جدید..." : "پیام..."}
             className="flex-1"
-            disabled={!!isSuspended}
           />
-          {text.trim() ? (
-            <Button size="icon" onClick={() => sendMessage(text.trim())} disabled={sending || !!isSuspended}>
-              {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+          {text.trim() || editing ? (
+            <Button size="icon" onClick={submitText} disabled={sending}>
+              {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : editing ? <Check className="w-5 h-5" /> : <Send className="w-5 h-5" />}
             </Button>
           ) : recording ? (
             <Button size="icon" variant="destructive" onClick={stopRecord}>
               <StopCircle className="w-5 h-5" />
             </Button>
           ) : (
-            <Button size="icon" onClick={startRecord} disabled={!!isSuspended}>
+            <Button size="icon" onClick={startRecord}>
               <Mic className="w-5 h-5" />
             </Button>
           )}
         </div>
       </div>
+
+      <Dialog open={!!imageView} onOpenChange={(o) => !o && setImageView(null)}>
+        <DialogContent className="max-w-3xl p-2 bg-black/95 border-0">
+          {imageView && (
+            <div className="flex flex-col items-center gap-3">
+              <img src={imageView.url} alt="" className="max-h-[80vh] w-auto rounded" />
+              <a href={imageView.url} download target="_blank" rel="noopener noreferrer">
+                <Button variant="secondary"><Download className="w-4 h-4 ml-2" /> دانلود</Button>
+              </a>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>حذف پیام</AlertDialogTitle>
+            <AlertDialogDescription>این پیام رو برای چه کسی حذف کنیم؟</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+            <AlertDialogCancel>انصراف</AlertDialogCancel>
+            <Button variant="outline" onClick={() => deleteTarget && deleteForMe(deleteTarget)}>فقط برای من</Button>
+            {deleteTarget?.sender_id === me && (
+              <AlertDialogAction onClick={() => deleteTarget && deleteForEveryone(deleteTarget)}>
+                برای همه
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+function MessageBubble({
+  m, mine, signed, replied, onReply, onEdit, onPin, onDelete, onImageClick,
+}: {
+  m: Message;
+  mine: boolean;
+  signed: string | null;
+  replied: Message | null | undefined;
+  onReply: () => void;
+  onEdit: () => void;
+  onPin: () => void;
+  onDelete: () => void;
+  onImageClick: (url: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  if (m.deleted_for_everyone) {
+    return (
+      <div className={`flex ${mine ? "justify-start" : "justify-end"}`}>
+        <div className="max-w-[75%] rounded-2xl px-3 py-2 bg-muted/60 text-muted-foreground italic text-sm">
+          این پیام حذف شده است
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`flex ${mine ? "justify-start" : "justify-end"} group`}>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            onContextMenu={(e) => { e.preventDefault(); setOpen(true); }}
+            className={`max-w-[75%] text-start rounded-2xl px-3 py-2 transition ${
+              mine
+                ? "bg-[color:var(--color-chat-bubble-me)] text-[color:var(--color-chat-bubble-me-foreground)] rounded-bl-sm"
+                : "bg-[color:var(--color-chat-bubble-other)] text-[color:var(--color-chat-bubble-other-foreground)] rounded-br-sm"
+            }`}
+          >
+            {replied && (
+              <div className="border-r-2 border-primary/60 pr-2 mb-1 text-xs opacity-80 truncate">
+                <p className="font-semibold text-primary">پاسخ</p>
+                <p className="truncate">{replied.content || "پیوست"}</p>
+              </div>
+            )}
+            {m.attachment_type === "image" && signed && (
+              <img
+                src={signed} alt=""
+                onClick={(e) => { e.stopPropagation(); onImageClick(signed); }}
+                className="rounded-lg max-h-64 mb-1 cursor-zoom-in"
+              />
+            )}
+            {m.attachment_type === "audio" && signed && (
+              <audio controls src={signed} preload="auto" className="max-w-full" />
+            )}
+            {m.attachment_type === "file" && signed && (
+              <a href={signed} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="underline flex items-center gap-2">
+                <Paperclip className="w-4 h-4" /> دانلود فایل
+              </a>
+            )}
+            {m.content && <p className="whitespace-pre-wrap break-words text-sm">{m.content}</p>}
+            <div className={`text-[10px] mt-1 flex items-center gap-1 ${mine ? "opacity-80" : "text-muted-foreground"}`}>
+              {m.is_pinned && <Pin className="w-3 h-3" />}
+              {m.edited_at && <span>ویرایش شده</span>}
+              <span>{formatChatTime(m.created_at)}</span>
+              {mine && (m.read_at ? <CheckCheck className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />)}
+            </div>
+          </button>
+        </PopoverTrigger>
+        <PopoverContent className="w-44 p-1" align={mine ? "start" : "end"}>
+          <button onClick={() => { setOpen(false); onReply(); }} className="w-full text-right flex items-center gap-2 px-3 py-2 rounded hover:bg-accent text-sm">
+            <Reply className="w-4 h-4" /> پاسخ
+          </button>
+          <button onClick={() => { setOpen(false); onPin(); }} className="w-full text-right flex items-center gap-2 px-3 py-2 rounded hover:bg-accent text-sm">
+            {m.is_pinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
+            {m.is_pinned ? "برداشتن سنجاق" : "سنجاق"}
+          </button>
+          {mine && m.content && (
+            <button onClick={() => { setOpen(false); onEdit(); }} className="w-full text-right flex items-center gap-2 px-3 py-2 rounded hover:bg-accent text-sm">
+              <Pencil className="w-4 h-4" /> ویرایش
+            </button>
+          )}
+          <button onClick={() => { setOpen(false); onDelete(); }} className="w-full text-right flex items-center gap-2 px-3 py-2 rounded hover:bg-accent text-sm text-destructive">
+            <Trash2 className="w-4 h-4" /> حذف
+          </button>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
