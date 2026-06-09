@@ -59,11 +59,13 @@ function ChatsList() {
         .order("created_at", { ascending: false })
         .limit(500);
       if (error) throw error;
-      const filtered = (msgs ?? []).filter((m: { deleted_for: string[] | null }) => !(m.deleted_for || []).includes(userId));
+      const filtered = (msgs ?? []).filter((m: { deleted_for: string[] | null; receiver_id: string | null }) =>
+        m.receiver_id !== null && !(m.deleted_for || []).includes(userId)
+      );
       const grouped = new Map<string, ChatItem>();
       const unreadCounts = new Map<string, number>();
       for (const m of filtered) {
-        const other = m.sender_id === userId ? m.receiver_id : m.sender_id;
+        const other = (m.sender_id === userId ? m.receiver_id : m.sender_id) as string;
         if (m.receiver_id === userId && !m.read_at && !m.deleted_for_everyone) {
           unreadCounts.set(other, (unreadCounts.get(other) || 0) + 1);
         }
