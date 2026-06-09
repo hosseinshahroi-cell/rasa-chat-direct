@@ -105,10 +105,6 @@ function ChatsList() {
     },
   });
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    navigate({ to: "/auth" });
-  };
 
   return (
     <div className="min-h-screen bg-background">
