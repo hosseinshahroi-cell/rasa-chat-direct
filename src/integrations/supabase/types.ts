@@ -14,6 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_ratings: {
+        Row: {
+          comment: string | null
+          created_at: string
+          stars: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          comment?: string | null
+          created_at?: string
+          stars: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          comment?: string | null
+          created_at?: string
+          stars?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       app_settings: {
         Row: {
           key: string
@@ -29,6 +53,98 @@ export type Database = {
           key?: string
           updated_at?: string
           value?: Json
+        }
+        Relationships: []
+      }
+      call_signals: {
+        Row: {
+          call_id: string
+          created_at: string
+          from_user: string
+          id: string
+          kind: string
+          payload: Json | null
+          to_user: string
+        }
+        Insert: {
+          call_id: string
+          created_at?: string
+          from_user: string
+          id?: string
+          kind: string
+          payload?: Json | null
+          to_user: string
+        }
+        Update: {
+          call_id?: string
+          created_at?: string
+          from_user?: string
+          id?: string
+          kind?: string
+          payload?: Json | null
+          to_user?: string
+        }
+        Relationships: []
+      }
+      group_members: {
+        Row: {
+          group_id: string
+          joined_at: string
+          role: string
+          user_id: string
+        }
+        Insert: {
+          group_id: string
+          joined_at?: string
+          role?: string
+          user_id: string
+        }
+        Update: {
+          group_id?: string
+          joined_at?: string
+          role?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_members_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      groups: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          id: string
+          invite_token: string
+          lock_members_send: boolean
+          name: string
+          owner_id: string
+          updated_at: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          id?: string
+          invite_token?: string
+          lock_members_send?: boolean
+          name: string
+          owner_id: string
+          updated_at?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          id?: string
+          invite_token?: string
+          lock_members_send?: boolean
+          name?: string
+          owner_id?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -73,11 +189,13 @@ export type Database = {
           deleted_for: string[]
           deleted_for_everyone: boolean
           edited_at: string | null
+          forwarded_from_id: string | null
+          group_id: string | null
           id: string
           is_announcement: boolean
           is_pinned: boolean
           read_at: string | null
-          receiver_id: string
+          receiver_id: string | null
           reply_to_id: string | null
           sender_id: string
         }
@@ -89,11 +207,13 @@ export type Database = {
           deleted_for?: string[]
           deleted_for_everyone?: boolean
           edited_at?: string | null
+          forwarded_from_id?: string | null
+          group_id?: string | null
           id?: string
           is_announcement?: boolean
           is_pinned?: boolean
           read_at?: string | null
-          receiver_id: string
+          receiver_id?: string | null
           reply_to_id?: string | null
           sender_id: string
         }
@@ -105,15 +225,31 @@ export type Database = {
           deleted_for?: string[]
           deleted_for_everyone?: boolean
           edited_at?: string | null
+          forwarded_from_id?: string | null
+          group_id?: string | null
           id?: string
           is_announcement?: boolean
           is_pinned?: boolean
           read_at?: string | null
-          receiver_id?: string
+          receiver_id?: string | null
           reply_to_id?: string | null
           sender_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "messages_forwarded_from_id_fkey"
+            columns: ["forwarded_from_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "messages_reply_to_id_fkey"
             columns: ["reply_to_id"]
@@ -243,6 +379,24 @@ export type Database = {
         }
         Relationships: []
       }
+      user_blocks: {
+        Row: {
+          blocked_id: string
+          blocker_id: string
+          created_at: string
+        }
+        Insert: {
+          blocked_id: string
+          blocker_id: string
+          created_at?: string
+        }
+        Update: {
+          blocked_id?: string
+          blocker_id?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -304,6 +458,7 @@ export type Database = {
           username: string
         }[]
       }
+      admin_ratings_chart: { Args: never; Returns: Json }
       admin_recent_messages: {
         Args: { limit_n?: number }
         Returns: {
@@ -345,12 +500,80 @@ export type Database = {
         }
         Returns: undefined
       }
+      create_group: {
+        Args: { p_avatar?: string; p_members?: string[]; p_name: string }
+        Returns: string
+      }
+      group_join_by_token: { Args: { p_token: string }; Returns: string }
+      group_members_list: {
+        Args: { p_gid: string }
+        Returns: {
+          avatar_url: string
+          display_name: string
+          is_verified: boolean
+          role: string
+          user_id: string
+          username: string
+        }[]
+      }
+      group_regen_invite: { Args: { p_gid: string }; Returns: string }
+      group_remove_member: {
+        Args: { p_gid: string; p_user: string }
+        Returns: undefined
+      }
+      group_role: { Args: { _gid: string; _uid: string }; Returns: string }
+      group_set_role: {
+        Args: { p_gid: string; p_role: string; p_user: string }
+        Returns: undefined
+      }
+      group_update_settings: {
+        Args: {
+          p_avatar?: string
+          p_gid: string
+          p_lock_members?: boolean
+          p_name?: string
+        }
+        Returns: undefined
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
         Returns: boolean
+      }
+      is_group_member: {
+        Args: { _gid: string; _uid: string }
+        Returns: boolean
+      }
+      lookup_profile_by_username: {
+        Args: { p_username: string }
+        Returns: {
+          avatar_url: string
+          bio: string
+          display_name: string
+          id: string
+          is_scammer: boolean
+          is_verified: boolean
+          last_seen_at: string
+          username: string
+        }[]
+      }
+      my_groups: {
+        Args: never
+        Returns: {
+          avatar_url: string
+          id: string
+          last_msg_at: string
+          member_count: number
+          my_role: string
+          name: string
+          owner_id: string
+        }[]
+      }
+      rate_app: {
+        Args: { p_comment?: string; p_stars: number }
+        Returns: undefined
       }
       report_user: {
         Args: { p_reason: string; p_subject: string; reported: string }

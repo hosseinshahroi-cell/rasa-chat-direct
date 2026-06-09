@@ -1,10 +1,11 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/UserAvatar";
-import { MessageCirclePlus, Settings, Shield, MessageCircle, LogOut, Bookmark, BadgeCheck } from "lucide-react";
+import { MessageCirclePlus, Settings, Shield, MessageCircle, Bookmark, BadgeCheck } from "lucide-react";
+import { Logo } from "@/components/Logo";
 import { formatRelativeTime } from "@/lib/format";
 
 export const Route = createFileRoute("/_authenticated/chats/")({
@@ -25,7 +26,6 @@ interface ChatItem {
 }
 
 function ChatsList() {
-  const navigate = useNavigate();
   const [userId, setUserId] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -59,11 +59,13 @@ function ChatsList() {
         .order("created_at", { ascending: false })
         .limit(500);
       if (error) throw error;
-      const filtered = (msgs ?? []).filter((m: { deleted_for: string[] | null }) => !(m.deleted_for || []).includes(userId));
+      const filtered = (msgs ?? []).filter((m: { deleted_for: string[] | null; receiver_id: string | null }) =>
+        m.receiver_id !== null && !(m.deleted_for || []).includes(userId)
+      );
       const grouped = new Map<string, ChatItem>();
       const unreadCounts = new Map<string, number>();
       for (const m of filtered) {
-        const other = m.sender_id === userId ? m.receiver_id : m.sender_id;
+        const other = (m.sender_id === userId ? m.receiver_id : m.sender_id) as string;
         if (m.receiver_id === userId && !m.read_at && !m.deleted_for_everyone) {
           unreadCounts.set(other, (unreadCounts.get(other) || 0) + 1);
         }
@@ -102,19 +104,13 @@ function ChatsList() {
     },
   });
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    navigate({ to: "/auth" });
-  };
 
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-10 bg-card/95 backdrop-blur border-b">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center">
-              <MessageCircle className="w-5 h-5 text-primary-foreground" />
-            </div>
+            <Logo size={36} />
             <h1 className="text-xl font-bold">رسا</h1>
           </div>
           <div className="flex items-center gap-1">
@@ -126,9 +122,6 @@ function ChatsList() {
             <Link to="/settings">
               <Button size="icon" variant="ghost"><Settings className="w-5 h-5" /></Button>
             </Link>
-            <Button size="icon" variant="ghost" onClick={handleLogout}>
-              <LogOut className="w-5 h-5" />
-            </Button>
           </div>
         </div>
       </header>
