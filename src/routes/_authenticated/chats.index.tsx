@@ -26,7 +26,6 @@ interface ChatItem {
 }
 
 function ChatsList() {
-  const navigate = useNavigate();
   const [userId, setUserId] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
 
