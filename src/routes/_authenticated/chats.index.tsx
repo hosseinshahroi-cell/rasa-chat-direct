@@ -115,9 +115,7 @@ function ChatsList() {
       <header className="sticky top-0 z-10 bg-card/95 backdrop-blur border-b">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center">
-              <MessageCircle className="w-5 h-5 text-primary-foreground" />
-            </div>
+            <Logo size={36} />
             <h1 className="text-xl font-bold">رسا</h1>
           </div>
           <div className="flex items-center gap-1">
@@ -129,9 +127,6 @@ function ChatsList() {
             <Link to="/settings">
               <Button size="icon" variant="ghost"><Settings className="w-5 h-5" /></Button>
             </Link>
-            <Button size="icon" variant="ghost" onClick={handleLogout}>
-              <LogOut className="w-5 h-5" />
-            </Button>
           </div>
         </div>
       </header>
