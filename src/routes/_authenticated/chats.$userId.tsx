@@ -653,6 +653,14 @@ function MessageBubble({
           <button onClick={() => { setOpen(false); onReply(); }} className="w-full text-right flex items-center gap-2 px-3 py-2 rounded hover:bg-accent text-sm">
             <Reply className="w-4 h-4" /> پاسخ
           </button>
+          <button onClick={() => { setOpen(false); onForward(); }} className="w-full text-right flex items-center gap-2 px-3 py-2 rounded hover:bg-accent text-sm">
+            <Forward className="w-4 h-4" /> فوروارد
+          </button>
+          {m.content && (
+            <button onClick={() => { setOpen(false); onCopy(); }} className="w-full text-right flex items-center gap-2 px-3 py-2 rounded hover:bg-accent text-sm">
+              <CopyIcon className="w-4 h-4" /> کپی متن
+            </button>
+          )}
           <button onClick={() => { setOpen(false); onPin(); }} className="w-full text-right flex items-center gap-2 px-3 py-2 rounded hover:bg-accent text-sm">
             {m.is_pinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
             {m.is_pinned ? "برداشتن سنجاق" : "سنجاق"}
