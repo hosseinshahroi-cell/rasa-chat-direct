@@ -198,10 +198,11 @@ function AdminPage() {
         </div>
 
         <Tabs defaultValue="users">
-          <TabsList className="w-full grid grid-cols-4">
+          <TabsList className="w-full grid grid-cols-5">
             <TabsTrigger value="users">کاربران</TabsTrigger>
             <TabsTrigger value="reports">گزارش‌ها</TabsTrigger>
             <TabsTrigger value="broadcast">اعلان</TabsTrigger>
+            <TabsTrigger value="ratings">امتیازها</TabsTrigger>
             <TabsTrigger value="controls">تنظیمات</TabsTrigger>
           </TabsList>
 
