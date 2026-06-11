@@ -10,7 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { UserAvatar } from "@/components/UserAvatar";
 import {
   ArrowRight, Search, BadgeCheck, Ban, ShieldOff, Users, MessageSquare, Activity,
-  UserPlus, Wifi, Trash2, ShieldAlert, Flag, Megaphone, Settings2, Lock, MoreVertical,
+  UserPlus, Wifi, Trash2, ShieldAlert, Flag, Megaphone, Settings2, Lock, MoreVertical, Star,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -198,10 +198,11 @@ function AdminPage() {
         </div>
 
         <Tabs defaultValue="users">
-          <TabsList className="w-full grid grid-cols-4">
+          <TabsList className="w-full grid grid-cols-5">
             <TabsTrigger value="users">کاربران</TabsTrigger>
             <TabsTrigger value="reports">گزارش‌ها</TabsTrigger>
             <TabsTrigger value="broadcast">اعلان</TabsTrigger>
+            <TabsTrigger value="ratings">امتیازها</TabsTrigger>
             <TabsTrigger value="controls">تنظیمات</TabsTrigger>
           </TabsList>
 
@@ -309,6 +310,10 @@ function AdminPage() {
 
           <TabsContent value="broadcast" className="mt-3">
             <BroadcastCard onSent={() => qc.invalidateQueries({ queryKey: ["admin-recent-messages"] })} />
+          </TabsContent>
+
+          <TabsContent value="ratings" className="mt-3">
+            <RatingsChart />
           </TabsContent>
 
           <TabsContent value="controls" className="mt-3">
@@ -507,6 +512,70 @@ function BroadcastCard({ onSent }: { onSent: () => void }) {
           {busy ? "..." : "ارسال به همه"}
         </Button>
       </div>
+    </Card>
+  );
+}
+
+function RatingsChart() {
+  const { data } = useQuery({
+    queryKey: ["admin-ratings-chart"],
+    refetchInterval: 30000,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("admin_ratings_chart");
+      if (error) throw error;
+      return data as { total: number; average: number; breakdown: Record<string, number>; recent: Array<{ username: string; stars: number; comment: string | null; created_at: string }> };
+    },
+  });
+  const total = data?.total || 0;
+  const breakdown = data?.breakdown || {};
+  const max = Math.max(1, ...Object.values(breakdown).map((v) => Number(v) || 0));
+  return (
+    <Card className="p-4 space-y-4">
+      <div className="flex items-center gap-2">
+        <Star className="w-4 h-4 text-primary" />
+        <h3 className="font-semibold text-sm">امتیازهای کاربران</h3>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-xl bg-primary/10 p-3 text-center">
+          <p className="text-3xl font-bold text-primary">{data?.average ?? 0}</p>
+          <p className="text-xs text-muted-foreground">میانگین از ۵</p>
+        </div>
+        <div className="rounded-xl bg-muted/40 p-3 text-center">
+          <p className="text-3xl font-bold">{total}</p>
+          <p className="text-xs text-muted-foreground">مجموع امتیازها</p>
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        {[5, 4, 3, 2, 1].map((s) => {
+          const c = Number(breakdown[String(s)] || 0);
+          const pct = (c / max) * 100;
+          return (
+            <div key={s} className="flex items-center gap-2 text-xs">
+              <span className="w-10 flex items-center gap-0.5">{s} <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" /></span>
+              <div className="flex-1 h-3 bg-muted rounded-full overflow-hidden">
+                <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+              </div>
+              <span className="w-8 text-muted-foreground text-end">{c}</span>
+            </div>
+          );
+        })}
+      </div>
+      {data?.recent && data.recent.length > 0 && (
+        <div className="border-t pt-3 space-y-2">
+          <p className="text-xs font-semibold">نظرات اخیر</p>
+          <ul className="space-y-2 max-h-72 overflow-y-auto">
+            {data.recent.filter((r) => r.comment).map((r, i) => (
+              <li key={i} className="text-xs border rounded-lg p-2">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="font-medium" dir="ltr">@{r.username}</span>
+                  <span className="flex">{Array.from({ length: r.stars }).map((_, j) => <Star key={j} className="w-3 h-3 fill-yellow-400 text-yellow-400" />)}</span>
+                </div>
+                <p className="text-muted-foreground whitespace-pre-wrap">{r.comment}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </Card>
   );
 }

@@ -8,7 +8,7 @@ import { UserAvatar } from "@/components/UserAvatar";
 import {
   ArrowRight, Send, Paperclip, Image as ImageIcon, Mic, StopCircle, Loader2,
   Bookmark, BadgeCheck, Reply, Pin, Trash2, Pencil, X, Download, Check, CheckCheck, PinOff,
-  MoreVertical, Flag, ShieldAlert, Megaphone,
+  MoreVertical, Flag, ShieldAlert, Megaphone, Copy as CopyIcon, Forward,
 } from "lucide-react";
 import { formatChatTime, formatLastSeen } from "@/lib/format";
 import { toast } from "sonner";
@@ -22,6 +22,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { VoicePlayer } from "@/components/VoicePlayer";
 import { ReportDialog } from "@/components/ReportDialog";
+import { ForwardDialog } from "@/components/ForwardDialog";
+import { MessageText } from "@/components/MessageText";
 
 const REACTION_EMOJIS = ["❤️", "👍", "👎", "😂", "😮", "😢", "🔥", "🙏"];
 
@@ -61,6 +63,7 @@ function ChatView() {
   const [editing, setEditing] = useState<Message | null>(null);
   const [imageView, setImageView] = useState<{ url: string; name: string } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Message | null>(null);
+  const [forwardTarget, setForwardTarget] = useState<Message | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLInputElement>(null);
@@ -423,6 +426,15 @@ function ChatView() {
                 onEdit={() => beginEdit(m)}
                 onPin={() => togglePin(m)}
                 onDelete={() => setDeleteTarget(m)}
+                onForward={() => setForwardTarget(m)}
+                onCopy={() => {
+                  if (m.content) {
+                    navigator.clipboard.writeText(m.content).then(
+                      () => toast.success("کپی شد"),
+                      () => toast.error("کپی نشد")
+                    );
+                  } else toast.error("متنی برای کپی نیست");
+                }}
                 onImageClick={(url) => setImageView({ url, name: m.attachment_url || "image" })}
               />
             );
@@ -431,6 +443,14 @@ function ChatView() {
       </div>
 
       {!isSelf && other && <ReportDialog open={reportOpen} onOpenChange={setReportOpen} reportedUserId={other.id} /> }
+      {me && (
+        <ForwardDialog
+          open={!!forwardTarget}
+          onOpenChange={(o) => !o && setForwardTarget(null)}
+          message={forwardTarget}
+          me={me}
+        />
+      )}
 
 
       {(replyTo || editing) && (
@@ -525,7 +545,7 @@ function ChatView() {
 }
 
 function MessageBubble({
-  m, mine, signed, replied, reactions, me, onReact, onReply, onEdit, onPin, onDelete, onImageClick,
+  m, mine, signed, replied, reactions, me, onReact, onReply, onEdit, onPin, onDelete, onForward, onCopy, onImageClick,
 }: {
   m: Message;
   mine: boolean;
@@ -538,6 +558,8 @@ function MessageBubble({
   onEdit: () => void;
   onPin: () => void;
   onDelete: () => void;
+  onForward: () => void;
+  onCopy: () => void;
   onImageClick: (url: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -609,7 +631,7 @@ function MessageBubble({
                 <Paperclip className="w-4 h-4" /> دانلود فایل
               </a>
             )}
-            {m.content && <p className="whitespace-pre-wrap break-words text-sm">{m.content}</p>}
+            {m.content && <MessageText text={m.content} mine={mine} />}
             <div className={`text-[10px] mt-1 flex items-center gap-1 ${mine ? "opacity-80" : "text-muted-foreground"}`}>
               {m.is_pinned && <Pin className="w-3 h-3" />}
               {m.edited_at && <span>ویرایش شده</span>}
@@ -631,6 +653,14 @@ function MessageBubble({
           <button onClick={() => { setOpen(false); onReply(); }} className="w-full text-right flex items-center gap-2 px-3 py-2 rounded hover:bg-accent text-sm">
             <Reply className="w-4 h-4" /> پاسخ
           </button>
+          <button onClick={() => { setOpen(false); onForward(); }} className="w-full text-right flex items-center gap-2 px-3 py-2 rounded hover:bg-accent text-sm">
+            <Forward className="w-4 h-4" /> فوروارد
+          </button>
+          {m.content && (
+            <button onClick={() => { setOpen(false); onCopy(); }} className="w-full text-right flex items-center gap-2 px-3 py-2 rounded hover:bg-accent text-sm">
+              <CopyIcon className="w-4 h-4" /> کپی متن
+            </button>
+          )}
           <button onClick={() => { setOpen(false); onPin(); }} className="w-full text-right flex items-center gap-2 px-3 py-2 rounded hover:bg-accent text-sm">
             {m.is_pinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
             {m.is_pinned ? "برداشتن سنجاق" : "سنجاق"}

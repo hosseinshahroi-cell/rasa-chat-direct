@@ -1,6 +1,8 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { NotificationListener } from "@/components/NotificationListener";
+import { BroadcastBanner } from "@/components/BroadcastBanner";
+import { LanguageProvider } from "@/lib/i18n";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
@@ -8,7 +10,6 @@ export const Route = createFileRoute("/_authenticated")({
     const { data, error } = await supabase.auth.getUser();
     if (error || !data.user) throw redirect({ to: "/auth" });
 
-    // Check profile complete
     const { data: profile } = await supabase
       .from("profiles")
       .select("username, display_name")
@@ -23,9 +24,10 @@ export const Route = createFileRoute("/_authenticated")({
     return { user: data.user };
   },
   component: () => (
-    <>
+    <LanguageProvider>
       <NotificationListener />
+      <BroadcastBanner />
       <Outlet />
-    </>
+    </LanguageProvider>
   ),
 });
