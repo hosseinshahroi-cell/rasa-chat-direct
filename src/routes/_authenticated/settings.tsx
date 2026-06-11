@@ -175,9 +175,86 @@ function SettingsPage() {
             {saving && <Loader2 className="w-4 h-4 ml-2 animate-spin" />}
             ذخیره تغییرات
           </Button>
+        </Card>
+
+        <LanguageCard />
+        <RatingCard />
+
+        <Card className="p-4">
           <Button variant="ghost" className="w-full text-destructive" onClick={logout}>خروج از حساب</Button>
         </Card>
       </main>
     </div>
+  );
+}
+
+function LanguageCard() {
+  const { lang, setLang } = useLang();
+  const options: Array<{ id: Lang; label: string }> = [
+    { id: "system", label: "زبان سیستم" },
+    { id: "fa", label: "فارسی" },
+    { id: "en", label: "English" },
+  ];
+  return (
+    <Card className="p-4 space-y-3 mt-4">
+      <div className="flex items-center gap-2">
+        <Languages className="w-4 h-4 text-primary" />
+        <h3 className="font-semibold text-sm">زبان برنامه</h3>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        {options.map((o) => (
+          <button
+            key={o.id}
+            onClick={() => setLang(o.id)}
+            className={`text-sm rounded-lg border px-3 py-2 transition ${lang === o.id ? "border-primary bg-primary/10 text-primary font-medium" : "hover:bg-accent"}`}
+          >{o.label}</button>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function RatingCard() {
+  const [stars, setStars] = useState(0);
+  const [comment, setComment] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(async ({ data }) => {
+      if (!data.user) return;
+      const { data: r } = await supabase.from("app_ratings").select("stars, comment").eq("user_id", data.user.id).maybeSingle();
+      if (r) { setStars(r.stars); setComment(r.comment || ""); setSubmitted(true); }
+    });
+  }, []);
+
+  const submit = async () => {
+    if (!stars) { toast.error("لطفاً ستاره انتخاب کنید"); return; }
+    setBusy(true);
+    const { error } = await supabase.rpc("rate_app", { p_stars: stars, p_comment: comment || undefined });
+    setBusy(false);
+    if (error) toast.error(error.message);
+    else { toast.success("امتیاز شما ثبت شد"); setSubmitted(true); }
+  };
+
+  return (
+    <Card className="p-4 space-y-3 mt-4">
+      <div className="flex items-center gap-2">
+        <Star className="w-4 h-4 text-primary" />
+        <h3 className="font-semibold text-sm">امتیاز به رسا</h3>
+      </div>
+      <div className="flex justify-center gap-1">
+        {[1, 2, 3, 4, 5].map((n) => (
+          <button key={n} onClick={() => setStars(n)} className="transition hover:scale-110">
+            <Star className={`w-8 h-8 ${n <= stars ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground"}`} />
+          </button>
+        ))}
+      </div>
+      <Textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="نظر شما (اختیاری)..." maxLength={500} rows={3} />
+      <Button onClick={submit} disabled={busy} className="w-full">
+        {busy && <Loader2 className="w-4 h-4 ml-2 animate-spin" />}
+        {submitted ? "به‌روزرسانی امتیاز" : "ثبت امتیاز"}
+      </Button>
+    </Card>
   );
 }
