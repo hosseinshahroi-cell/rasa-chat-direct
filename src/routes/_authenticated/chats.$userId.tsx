@@ -426,6 +426,15 @@ function ChatView() {
                 onEdit={() => beginEdit(m)}
                 onPin={() => togglePin(m)}
                 onDelete={() => setDeleteTarget(m)}
+                onForward={() => setForwardTarget(m)}
+                onCopy={() => {
+                  if (m.content) {
+                    navigator.clipboard.writeText(m.content).then(
+                      () => toast.success("کپی شد"),
+                      () => toast.error("کپی نشد")
+                    );
+                  } else toast.error("متنی برای کپی نیست");
+                }}
                 onImageClick={(url) => setImageView({ url, name: m.attachment_url || "image" })}
               />
             );
@@ -434,6 +443,14 @@ function ChatView() {
       </div>
 
       {!isSelf && other && <ReportDialog open={reportOpen} onOpenChange={setReportOpen} reportedUserId={other.id} /> }
+      {me && (
+        <ForwardDialog
+          open={!!forwardTarget}
+          onOpenChange={(o) => !o && setForwardTarget(null)}
+          message={forwardTarget}
+          me={me}
+        />
+      )}
 
 
       {(replyTo || editing) && (
