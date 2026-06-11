@@ -143,7 +143,7 @@ function CreateGroupPanel({ me, onCreated }: { me: string | null; onCreated: (gi
       }
       const { data, error } = await supabase.rpc("create_group", {
         p_name: name.trim(),
-        p_avatar: avatarPath,
+        p_avatar: avatarPath ?? undefined,
         p_members: selected.map((s) => s.id),
       });
       if (error) throw error;
