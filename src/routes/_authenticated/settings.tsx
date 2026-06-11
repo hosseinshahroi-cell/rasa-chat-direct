@@ -8,9 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ArrowRight, Camera, Loader2, Check, Bell, BadgeCheck } from "lucide-react";
+import { ArrowRight, Camera, Loader2, Check, Bell, BadgeCheck, Star, Languages } from "lucide-react";
 import { toast } from "sonner";
 import { getAvatarUrl } from "@/lib/avatar";
+import { useLang, type Lang } from "@/lib/i18n";
+import { Textarea } from "@/components/ui/textarea";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({ meta: [{ title: "تنظیمات - رسا" }] }),
