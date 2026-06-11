@@ -8,7 +8,7 @@ import { UserAvatar } from "@/components/UserAvatar";
 import {
   ArrowRight, Send, Paperclip, Image as ImageIcon, Mic, StopCircle, Loader2,
   Bookmark, BadgeCheck, Reply, Pin, Trash2, Pencil, X, Download, Check, CheckCheck, PinOff,
-  MoreVertical, Flag, ShieldAlert, Megaphone,
+  MoreVertical, Flag, ShieldAlert, Megaphone, Copy as CopyIcon, Forward,
 } from "lucide-react";
 import { formatChatTime, formatLastSeen } from "@/lib/format";
 import { toast } from "sonner";
@@ -22,6 +22,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { VoicePlayer } from "@/components/VoicePlayer";
 import { ReportDialog } from "@/components/ReportDialog";
+import { ForwardDialog } from "@/components/ForwardDialog";
+import { MessageText } from "@/components/MessageText";
 
 const REACTION_EMOJIS = ["❤️", "👍", "👎", "😂", "😮", "😢", "🔥", "🙏"];
 
