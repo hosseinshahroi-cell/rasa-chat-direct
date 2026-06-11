@@ -10,7 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { UserAvatar } from "@/components/UserAvatar";
 import {
   ArrowRight, Search, BadgeCheck, Ban, ShieldOff, Users, MessageSquare, Activity,
-  UserPlus, Wifi, Trash2, ShieldAlert, Flag, Megaphone, Settings2, Lock, MoreVertical,
+  UserPlus, Wifi, Trash2, ShieldAlert, Flag, Megaphone, Settings2, Lock, MoreVertical, Star,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
