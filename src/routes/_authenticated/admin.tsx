@@ -312,6 +312,10 @@ function AdminPage() {
             <BroadcastCard onSent={() => qc.invalidateQueries({ queryKey: ["admin-recent-messages"] })} />
           </TabsContent>
 
+          <TabsContent value="ratings" className="mt-3">
+            <RatingsChart />
+          </TabsContent>
+
           <TabsContent value="controls" className="mt-3">
             <Card className="p-4 space-y-3">
               <div className="flex items-center gap-2">
