@@ -63,6 +63,7 @@ function ChatView() {
   const [editing, setEditing] = useState<Message | null>(null);
   const [imageView, setImageView] = useState<{ url: string; name: string } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Message | null>(null);
+  const [forwardTarget, setForwardTarget] = useState<Message | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLInputElement>(null);
