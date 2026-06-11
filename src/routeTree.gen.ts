@@ -17,6 +17,7 @@ import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedNewChatRouteImport } from './routes/_authenticated/new-chat'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as AuthenticatedChatsIndexRouteImport } from './routes/_authenticated/chats.index'
+import { Route as AuthenticatedUUsernameRouteImport } from './routes/_authenticated/u.$username'
 import { Route as AuthenticatedChatsUserIdRouteImport } from './routes/_authenticated/chats.$userId'
 
 const CompleteProfileRoute = CompleteProfileRouteImport.update({
@@ -58,6 +59,11 @@ const AuthenticatedChatsIndexRoute = AuthenticatedChatsIndexRouteImport.update({
   path: '/chats/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedUUsernameRoute = AuthenticatedUUsernameRouteImport.update({
+  id: '/u/$username',
+  path: '/u/$username',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedChatsUserIdRoute =
   AuthenticatedChatsUserIdRouteImport.update({
     id: '/chats/$userId',
@@ -73,6 +79,7 @@ export interface FileRoutesByFullPath {
   '/new-chat': typeof AuthenticatedNewChatRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/chats/$userId': typeof AuthenticatedChatsUserIdRoute
+  '/u/$username': typeof AuthenticatedUUsernameRoute
   '/chats/': typeof AuthenticatedChatsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -83,6 +90,7 @@ export interface FileRoutesByTo {
   '/new-chat': typeof AuthenticatedNewChatRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/chats/$userId': typeof AuthenticatedChatsUserIdRoute
+  '/u/$username': typeof AuthenticatedUUsernameRoute
   '/chats': typeof AuthenticatedChatsIndexRoute
 }
 export interface FileRoutesById {
@@ -95,6 +103,7 @@ export interface FileRoutesById {
   '/_authenticated/new-chat': typeof AuthenticatedNewChatRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/chats/$userId': typeof AuthenticatedChatsUserIdRoute
+  '/_authenticated/u/$username': typeof AuthenticatedUUsernameRoute
   '/_authenticated/chats/': typeof AuthenticatedChatsIndexRoute
 }
 export interface FileRouteTypes {
@@ -107,6 +116,7 @@ export interface FileRouteTypes {
     | '/new-chat'
     | '/settings'
     | '/chats/$userId'
+    | '/u/$username'
     | '/chats/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -117,6 +127,7 @@ export interface FileRouteTypes {
     | '/new-chat'
     | '/settings'
     | '/chats/$userId'
+    | '/u/$username'
     | '/chats'
   id:
     | '__root__'
@@ -128,6 +139,7 @@ export interface FileRouteTypes {
     | '/_authenticated/new-chat'
     | '/_authenticated/settings'
     | '/_authenticated/chats/$userId'
+    | '/_authenticated/u/$username'
     | '/_authenticated/chats/'
   fileRoutesById: FileRoutesById
 }
@@ -196,6 +208,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedChatsIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/u/$username': {
+      id: '/_authenticated/u/$username'
+      path: '/u/$username'
+      fullPath: '/u/$username'
+      preLoaderRoute: typeof AuthenticatedUUsernameRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/chats/$userId': {
       id: '/_authenticated/chats/$userId'
       path: '/chats/$userId'
@@ -211,6 +230,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedNewChatRoute: typeof AuthenticatedNewChatRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedChatsUserIdRoute: typeof AuthenticatedChatsUserIdRoute
+  AuthenticatedUUsernameRoute: typeof AuthenticatedUUsernameRoute
   AuthenticatedChatsIndexRoute: typeof AuthenticatedChatsIndexRoute
 }
 
@@ -219,6 +239,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedNewChatRoute: AuthenticatedNewChatRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedChatsUserIdRoute: AuthenticatedChatsUserIdRoute,
+  AuthenticatedUUsernameRoute: AuthenticatedUUsernameRoute,
   AuthenticatedChatsIndexRoute: AuthenticatedChatsIndexRoute,
 }
 
