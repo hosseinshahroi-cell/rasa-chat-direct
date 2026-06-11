@@ -631,7 +631,7 @@ function MessageBubble({
                 <Paperclip className="w-4 h-4" /> دانلود فایل
               </a>
             )}
-            {m.content && <p className="whitespace-pre-wrap break-words text-sm">{m.content}</p>}
+            {m.content && <MessageText text={m.content} mine={mine} />}
             <div className={`text-[10px] mt-1 flex items-center gap-1 ${mine ? "opacity-80" : "text-muted-foreground"}`}>
               {m.is_pinned && <Pin className="w-3 h-3" />}
               {m.edited_at && <span>ویرایش شده</span>}
