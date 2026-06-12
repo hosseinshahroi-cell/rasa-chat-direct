@@ -5,12 +5,14 @@ import { Megaphone, X } from "lucide-react";
 interface Ann { id: string; content: string | null; created_at: string; }
 
 const STORAGE_KEY = "rasa_dismissed_broadcast";
+const MUTE_KEY = "rasa_mute_announcements";
 
 export function BroadcastBanner() {
   const [ann, setAnn] = useState<Ann | null>(null);
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
+    if (typeof window !== "undefined" && localStorage.getItem(MUTE_KEY) === "1") return;
     let cancelled = false;
     (async () => {
       const { data: u } = await supabase.auth.getUser();
@@ -24,7 +26,7 @@ export function BroadcastBanner() {
         .limit(1)
         .maybeSingle();
       if (cancelled || !data) return;
-      const dismissed = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
+      const dismissed = localStorage.getItem(STORAGE_KEY);
       if (dismissed === data.id) return;
       setAnn(data as Ann);
       setVisible(true);

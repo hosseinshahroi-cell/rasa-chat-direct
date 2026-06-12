@@ -8,7 +8,7 @@ import { UserAvatar } from "@/components/UserAvatar";
 import {
   ArrowRight, Send, Paperclip, Image as ImageIcon, Mic, StopCircle, Loader2,
   Bookmark, BadgeCheck, Reply, Pin, Trash2, Pencil, X, Download, Check, CheckCheck, PinOff,
-  MoreVertical, Flag, ShieldAlert, Megaphone, Copy as CopyIcon, Forward,
+  MoreVertical, Flag, ShieldAlert, Megaphone, Copy as CopyIcon, Forward, Phone, User as UserIcon,
 } from "lucide-react";
 import { formatChatTime, formatLastSeen } from "@/lib/format";
 import { toast } from "sonner";
