@@ -56,7 +56,8 @@ function CallView() {
 
     const sendSignal = async (kind: string, payload: unknown) => {
       await supabase.from("call_signals").insert({
-        from_user: me, to_user: peerId, call_id: callIdRef.current, kind, payload: payload as object,
+        from_user: me, to_user: peerId, call_id: callIdRef.current, kind,
+        payload: payload as never,
       });
     };
 
