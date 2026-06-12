@@ -352,34 +352,34 @@ function ChatView() {
             </>
           ) : (
             <>
-              <Link
-                to="/u/$username"
-                params={{ username: other?.username || "" }}
-                disabled={!other}
-                className="flex items-center gap-3 flex-1 min-w-0 hover:opacity-80 transition"
-              >
-                {other ? (
+              {other ? (
+                <Link
+                  to="/u/$username"
+                  params={{ username: other.username }}
+                  className="flex items-center gap-3 flex-1 min-w-0 hover:opacity-80 transition"
+                >
                   <UserAvatar avatarPath={other.avatar_url} name={other.display_name || other.username} verified={other.is_verified} className="w-10 h-10" />
-                ) : (
-                  <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center"><UserIcon className="w-5 h-5 text-muted-foreground" /></div>
-                )}
-                <div className="flex-1 min-w-0 text-right">
-                  <p className="font-semibold truncate flex items-center gap-1">
-                    {other?.display_name || other?.username || "کاربر"}
-                    {other?.is_verified && <BadgeCheck className="w-4 h-4 text-primary fill-primary stroke-background shrink-0" />}
-                    {other?.is_scammer && (
-                      <span className="inline-flex items-center gap-0.5 text-[10px] bg-destructive/15 text-destructive px-1.5 py-0.5 rounded-full">
-                        <ShieldAlert className="w-3 h-3" /> کلاهبردار
-                      </span>
-                    )}
-                  </p>
-                  {other && (
+                  <div className="flex-1 min-w-0 text-right">
+                    <p className="font-semibold truncate flex items-center gap-1">
+                      {other.display_name || other.username}
+                      {other.is_verified && <BadgeCheck className="w-4 h-4 text-primary fill-primary stroke-background shrink-0" />}
+                      {other.is_scammer && (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] bg-destructive/15 text-destructive px-1.5 py-0.5 rounded-full">
+                          <ShieldAlert className="w-3 h-3" /> کلاهبردار
+                        </span>
+                      )}
+                    </p>
                     <p className={`text-xs truncate ${formatLastSeen(other.last_seen_at) === "آنلاین" ? "text-primary" : "text-muted-foreground"}`}>
                       {formatLastSeen(other.last_seen_at)}
                     </p>
-                  )}
+                  </div>
+                </Link>
+              ) : (
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center"><UserIcon className="w-5 h-5 text-muted-foreground" /></div>
+                  <p className="font-semibold truncate">کاربر</p>
                 </div>
-              </Link>
+              )}
               <Link to="/call/$userId" params={{ userId: otherId }}>
                 <Button size="icon" variant="ghost" title="تماس صوتی"><Phone className="w-5 h-5 text-primary" /></Button>
               </Link>
