@@ -1,33 +1,30 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 
 export function NotificationListener() {
   const queryClient = useQueryClient();
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   useEffect(() => {
-    let userId: string | null = null;
+    let cancelled = false;
 
-    supabase.auth.getUser().then(({ data }) => {
-      userId = data.user?.id ?? null;
-      if (!userId) return;
+    (async () => {
+      const { data } = await supabase.auth.getUser();
+      const userId = data.user?.id;
+      if (!userId || cancelled) return;
 
+      // Unique channel name per mount avoids "cannot add callbacks after subscribe"
       const channel = supabase
-        .channel(`notify-${userId}`)
+        .channel(`notify-${userId}-${Math.random().toString(36).slice(2, 8)}`)
         .on(
           "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "messages",
-            filter: `receiver_id=eq.${userId}`,
-          },
+          { event: "INSERT", schema: "public", table: "messages", filter: `receiver_id=eq.${userId}` },
           async (payload) => {
             queryClient.invalidateQueries({ queryKey: ["chats"] });
             queryClient.invalidateQueries({ queryKey: ["messages"] });
 
             const msg = payload.new as { sender_id: string; content: string | null };
-            // browser notification
             if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
               try {
                 const { data: sender } = await supabase
@@ -43,18 +40,26 @@ export function NotificationListener() {
                     tag: `rasa-${msg.sender_id}`,
                   });
                 }
-              } catch {
-                // ignore
-              }
+              } catch { /* ignore */ }
             }
           }
         )
         .subscribe();
 
-      return () => {
+      if (cancelled) {
         supabase.removeChannel(channel);
-      };
-    });
+        return;
+      }
+      channelRef.current = channel;
+    })();
+
+    return () => {
+      cancelled = true;
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+    };
   }, [queryClient]);
 
   return null;

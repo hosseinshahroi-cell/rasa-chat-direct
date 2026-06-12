@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { NotificationListener } from "@/components/NotificationListener";
 import { BroadcastBanner } from "@/components/BroadcastBanner";
 import { LanguageProvider } from "@/lib/i18n";
+import { IncomingCallListener } from "@/components/IncomingCallListener";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
@@ -26,6 +27,7 @@ export const Route = createFileRoute("/_authenticated")({
   component: () => (
     <LanguageProvider>
       <NotificationListener />
+      <IncomingCallListener />
       <BroadcastBanner />
       <Outlet />
     </LanguageProvider>

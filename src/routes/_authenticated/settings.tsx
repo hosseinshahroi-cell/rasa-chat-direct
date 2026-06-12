@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ArrowRight, Camera, Loader2, Check, Bell, BadgeCheck, Star, Languages } from "lucide-react";
+import { ArrowRight, Camera, Loader2, Check, Bell, BadgeCheck, Star, Languages, Megaphone } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { getAvatarUrl } from "@/lib/avatar";
 import { useLang, type Lang } from "@/lib/i18n";
@@ -36,11 +37,13 @@ function SettingsPage() {
   const [checkResult, setCheckResult] = useState<{ available: boolean; error: string | null } | null>(null);
   const [saving, setSaving] = useState(false);
   const [notifGranted, setNotifGranted] = useState(false);
+  const [muteAnnouncements, setMuteAnnouncements] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (typeof Notification !== "undefined") setNotifGranted(Notification.permission === "granted");
+    if (typeof window !== "undefined") setMuteAnnouncements(localStorage.getItem("rasa_mute_announcements") === "1");
     supabase.auth.getUser().then(async ({ data }) => {
       if (!data.user) return;
       setUserId(data.user.id);
@@ -170,6 +173,24 @@ function SettingsPage() {
             <Bell className="w-4 h-4 ml-2" />
             {notifGranted ? "اعلان‌ها فعال است" : "فعال کردن اعلان"}
           </Button>
+
+          <div className="flex items-center justify-between rounded-lg border p-3">
+            <div className="flex items-center gap-2">
+              <Megaphone className="w-4 h-4 text-primary" />
+              <div>
+                <p className="text-sm font-medium">بی‌صدا کردن اطلاعیه‌ها</p>
+                <p className="text-[11px] text-muted-foreground">اعلان‌های مدیر رسا نمایش داده نشود</p>
+              </div>
+            </div>
+            <Switch
+              checked={muteAnnouncements}
+              onCheckedChange={(v) => {
+                setMuteAnnouncements(v);
+                localStorage.setItem("rasa_mute_announcements", v ? "1" : "0");
+                toast.success(v ? "اطلاعیه‌ها بی‌صدا شد" : "اطلاعیه‌ها فعال شد");
+              }}
+            />
+          </div>
 
           <Button onClick={save} className="w-full" disabled={saving}>
             {saving && <Loader2 className="w-4 h-4 ml-2 animate-spin" />}
