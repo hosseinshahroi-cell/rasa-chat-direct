@@ -138,7 +138,7 @@ function CallView() {
           .from("call_signals").select("kind, payload, from_user")
           .eq("call_id", callIdRef.current).eq("kind", "offer").maybeSingle();
         if (existing && existing.from_user !== me) {
-          await pc.setRemoteDescription(new RTCSessionDescription(existing.payload as RTCSessionDescriptionInit));
+          await pc.setRemoteDescription(new RTCSessionDescription(existing.payload as unknown as RTCSessionDescriptionInit));
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
           await sendSignal("answer", answer);
