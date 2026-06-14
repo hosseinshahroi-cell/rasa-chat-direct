@@ -18,6 +18,7 @@ import { Route as AuthenticatedNewChatRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as AuthenticatedChatsIndexRouteImport } from './routes/_authenticated/chats.index'
 import { Route as AuthenticatedUUsernameRouteImport } from './routes/_authenticated/u.$username'
+import { Route as AuthenticatedGroupGroupIdRouteImport } from './routes/_authenticated/group.$groupId'
 import { Route as AuthenticatedChatsUserIdRouteImport } from './routes/_authenticated/chats.$userId'
 import { Route as AuthenticatedCallUserIdRouteImport } from './routes/_authenticated/call.$userId'
 
@@ -65,6 +66,12 @@ const AuthenticatedUUsernameRoute = AuthenticatedUUsernameRouteImport.update({
   path: '/u/$username',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedGroupGroupIdRoute =
+  AuthenticatedGroupGroupIdRouteImport.update({
+    id: '/group/$groupId',
+    path: '/group/$groupId',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedChatsUserIdRoute =
   AuthenticatedChatsUserIdRouteImport.update({
     id: '/chats/$userId',
@@ -86,6 +93,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AuthenticatedSettingsRoute
   '/call/$userId': typeof AuthenticatedCallUserIdRoute
   '/chats/$userId': typeof AuthenticatedChatsUserIdRoute
+  '/group/$groupId': typeof AuthenticatedGroupGroupIdRoute
   '/u/$username': typeof AuthenticatedUUsernameRoute
   '/chats/': typeof AuthenticatedChatsIndexRoute
 }
@@ -98,6 +106,7 @@ export interface FileRoutesByTo {
   '/settings': typeof AuthenticatedSettingsRoute
   '/call/$userId': typeof AuthenticatedCallUserIdRoute
   '/chats/$userId': typeof AuthenticatedChatsUserIdRoute
+  '/group/$groupId': typeof AuthenticatedGroupGroupIdRoute
   '/u/$username': typeof AuthenticatedUUsernameRoute
   '/chats': typeof AuthenticatedChatsIndexRoute
 }
@@ -112,6 +121,7 @@ export interface FileRoutesById {
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/call/$userId': typeof AuthenticatedCallUserIdRoute
   '/_authenticated/chats/$userId': typeof AuthenticatedChatsUserIdRoute
+  '/_authenticated/group/$groupId': typeof AuthenticatedGroupGroupIdRoute
   '/_authenticated/u/$username': typeof AuthenticatedUUsernameRoute
   '/_authenticated/chats/': typeof AuthenticatedChatsIndexRoute
 }
@@ -126,6 +136,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/call/$userId'
     | '/chats/$userId'
+    | '/group/$groupId'
     | '/u/$username'
     | '/chats/'
   fileRoutesByTo: FileRoutesByTo
@@ -138,6 +149,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/call/$userId'
     | '/chats/$userId'
+    | '/group/$groupId'
     | '/u/$username'
     | '/chats'
   id:
@@ -151,6 +163,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings'
     | '/_authenticated/call/$userId'
     | '/_authenticated/chats/$userId'
+    | '/_authenticated/group/$groupId'
     | '/_authenticated/u/$username'
     | '/_authenticated/chats/'
   fileRoutesById: FileRoutesById
@@ -227,6 +240,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedUUsernameRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/group/$groupId': {
+      id: '/_authenticated/group/$groupId'
+      path: '/group/$groupId'
+      fullPath: '/group/$groupId'
+      preLoaderRoute: typeof AuthenticatedGroupGroupIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/chats/$userId': {
       id: '/_authenticated/chats/$userId'
       path: '/chats/$userId'
@@ -250,6 +270,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedCallUserIdRoute: typeof AuthenticatedCallUserIdRoute
   AuthenticatedChatsUserIdRoute: typeof AuthenticatedChatsUserIdRoute
+  AuthenticatedGroupGroupIdRoute: typeof AuthenticatedGroupGroupIdRoute
   AuthenticatedUUsernameRoute: typeof AuthenticatedUUsernameRoute
   AuthenticatedChatsIndexRoute: typeof AuthenticatedChatsIndexRoute
 }
@@ -260,6 +281,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedCallUserIdRoute: AuthenticatedCallUserIdRoute,
   AuthenticatedChatsUserIdRoute: AuthenticatedChatsUserIdRoute,
+  AuthenticatedGroupGroupIdRoute: AuthenticatedGroupGroupIdRoute,
   AuthenticatedUUsernameRoute: AuthenticatedUUsernameRoute,
   AuthenticatedChatsIndexRoute: AuthenticatedChatsIndexRoute,
 }

@@ -14,15 +14,16 @@ export const Route = createFileRoute("/_authenticated/chats/")({
 });
 
 interface ChatItem {
-  other_id: string;
-  other_username: string;
-  other_display_name: string | null;
-  other_avatar: string | null;
-  other_verified: boolean;
+  kind: "dm" | "group";
+  id: string; // user id or group id
+  name: string;
+  avatar: string | null;
+  verified: boolean;
   last_content: string | null;
   last_attachment_type: string | null;
   last_at: string;
   unread: number;
+  member_count?: number;
 }
 
 function ChatsList() {
