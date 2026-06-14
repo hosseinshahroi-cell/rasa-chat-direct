@@ -4,10 +4,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { UserAvatar } from "@/components/UserAvatar";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
-  ArrowRight, Send, Loader2, Users, Settings as SettingsIcon, Copy, LogOut, Crown, Shield as ShieldIcon,
+  ArrowRight, Send, Loader2, Users, Settings as SettingsIcon, Copy, LogOut, Crown, Shield as ShieldIcon, Radio, Save,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatChatTime } from "@/lib/format";
@@ -28,6 +30,10 @@ interface Member {
   user_id: string; username: string; display_name: string | null;
   avatar_url: string | null; is_verified: boolean; role: string;
 }
+interface GroupInfo {
+  id: string; name: string; avatar_url: string | null; owner_id: string; invite_token: string;
+  lock_members_send: boolean; is_channel: boolean; description: string | null; public_username: string | null;
+}
 
 function GroupView() {
   const { groupId } = Route.useParams();
@@ -37,20 +43,33 @@ function GroupView() {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editUsername, setEditUsername] = useState("");
+  const [editLocked, setEditLocked] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { supabase.auth.getUser().then(({ data }) => setMe(data.user?.id ?? null)); }, []);
 
-  const { data: group } = useQuery({
+  const { data: group } = useQuery<GroupInfo | null>({
     queryKey: ["group", groupId],
     queryFn: async () => {
       const { data, error } = await supabase.from("groups")
-        .select("id, name, avatar_url, owner_id, invite_token, lock_members_send")
+        .select("id, name, avatar_url, owner_id, invite_token, lock_members_send, is_channel, description, public_username")
         .eq("id", groupId).maybeSingle();
       if (error) throw error;
-      return data;
+      return data as GroupInfo | null;
     },
   });
+
+  useEffect(() => {
+    if (!group) return;
+    setEditName(group.name);
+    setEditDescription(group.description || "");
+    setEditUsername(group.public_username || "");
+    setEditLocked(group.lock_members_send);
+  }, [group]);
 
   const { data: members = [] } = useQuery<Member[]>({
     queryKey: ["group-members", groupId],
@@ -91,6 +110,8 @@ function GroupView() {
 
   const memberById = new Map(members.map((m) => [m.user_id, m]));
   const myRole = members.find((m) => m.user_id === me)?.role;
+  const canManage = myRole === "owner" || myRole === "admin";
+  const canSend = !group?.is_channel || canManage;
 
   const send = async () => {
     if (!text.trim() || !me) return;
@@ -126,6 +147,24 @@ function GroupView() {
     toast.success("لینک جدید ساخته شد");
   };
 
+  const saveSettings = async () => {
+    if (!canManage || !group) return;
+    setSavingSettings(true);
+    const { error } = await (supabase.rpc as any)("group_update_settings", {
+      p_gid: groupId,
+      p_name: editName.trim() || group.name,
+      p_avatar: undefined,
+      p_lock_members: editLocked,
+      p_description: editDescription.trim() || undefined,
+      p_public_username: editUsername.trim() || undefined,
+    });
+    setSavingSettings(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success("تنظیمات ذخیره شد");
+    qc.invalidateQueries({ queryKey: ["group", groupId] });
+    qc.invalidateQueries({ queryKey: ["chats"] });
+  };
+
   return (
     <div className="flex flex-col h-screen bg-background">
       <header className="sticky top-0 z-10 bg-card/95 backdrop-blur border-b">
@@ -138,8 +177,8 @@ function GroupView() {
                 <AvatarFallback className="bg-primary/15 text-primary"><Users className="w-5 h-5" /></AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
-                <p className="font-semibold truncate">{group.name}</p>
-                <p className="text-xs text-muted-foreground truncate">{members.length} عضو</p>
+                <p className="font-semibold truncate flex items-center gap-1">{group.name}{group.is_channel && <Radio className="w-3.5 h-3.5 text-primary" />}</p>
+                <p className="text-xs text-muted-foreground truncate">{group.is_channel ? "کانال" : "گروه"} · {members.length} عضو</p>
               </div>
             </button>
           ) : (
@@ -183,9 +222,11 @@ function GroupView() {
           <Input
             value={text} onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-            placeholder="پیام در گروه..." className="flex-1"
+            placeholder={canSend ? (group?.is_channel ? "ارسال پست در کانال..." : "پیام در گروه...") : "فقط مدیران کانال می‌توانند ارسال کنند"}
+            disabled={!canSend}
+            className="flex-1"
           />
-          <Button size="icon" onClick={send} disabled={sending || !text.trim()}>
+          <Button size="icon" onClick={send} disabled={sending || !text.trim() || !canSend}>
             {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
           </Button>
         </div>
@@ -193,9 +234,32 @@ function GroupView() {
 
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>{group?.name}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{group?.is_channel ? "مدیریت کانال" : "مدیریت گروه"}</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            {(myRole === "owner" || myRole === "admin") && group?.invite_token && (
+            {canManage && group && (
+              <div className="border rounded-lg p-3 space-y-3">
+                <p className="text-xs font-semibold">تنظیمات اصلی</p>
+                <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="نام" maxLength={80} />
+                {group.is_channel && (
+                  <div className="relative">
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">@</span>
+                    <Input value={editUsername} onChange={(e) => setEditUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, "").toLowerCase())} placeholder="آیدی کانال" className="pr-7" dir="ltr" maxLength={30} />
+                  </div>
+                )}
+                <Textarea value={editDescription} onChange={(e) => setEditDescription(e.target.value)} placeholder="توضیحات" maxLength={180} />
+                {!group.is_channel && (
+                  <div className="flex items-center justify-between rounded-md bg-muted/40 p-2">
+                    <span className="text-sm">ارسال فقط برای ادمین‌ها</span>
+                    <Switch checked={editLocked} onCheckedChange={setEditLocked} />
+                  </div>
+                )}
+                <Button onClick={saveSettings} disabled={savingSettings || !editName.trim()} className="w-full" size="sm">
+                  {savingSettings ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : <Save className="w-4 h-4 ml-2" />}
+                  ذخیره تنظیمات
+                </Button>
+              </div>
+            )}
+            {canManage && group?.invite_token && !group.is_channel && (
               <div className="border rounded-lg p-3 space-y-2">
                 <p className="text-xs font-semibold">لینک دعوت</p>
                 <div className="flex gap-1.5">
