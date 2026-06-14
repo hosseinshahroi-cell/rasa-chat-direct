@@ -119,31 +119,43 @@ export type Database = {
         Row: {
           avatar_url: string | null
           created_at: string
+          description: string | null
           id: string
           invite_token: string
+          is_channel: boolean
           lock_members_send: boolean
+          member_can_invite: boolean
           name: string
           owner_id: string
+          public_username: string | null
           updated_at: string
         }
         Insert: {
           avatar_url?: string | null
           created_at?: string
+          description?: string | null
           id?: string
           invite_token?: string
+          is_channel?: boolean
           lock_members_send?: boolean
+          member_can_invite?: boolean
           name: string
           owner_id: string
+          public_username?: string | null
           updated_at?: string
         }
         Update: {
           avatar_url?: string | null
           created_at?: string
+          description?: string | null
           id?: string
           invite_token?: string
+          is_channel?: boolean
           lock_members_send?: boolean
+          member_can_invite?: boolean
           name?: string
           owner_id?: string
+          public_username?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -379,6 +391,62 @@ export type Database = {
         }
         Relationships: []
       }
+      stories: {
+        Row: {
+          caption: string | null
+          created_at: string
+          expires_at: string
+          id: string
+          media_type: string
+          media_url: string
+          user_id: string
+        }
+        Insert: {
+          caption?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          media_type: string
+          media_url: string
+          user_id: string
+        }
+        Update: {
+          caption?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          media_type?: string
+          media_url?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      story_views: {
+        Row: {
+          story_id: string
+          viewed_at: string
+          viewer_id: string
+        }
+        Insert: {
+          story_id: string
+          viewed_at?: string
+          viewer_id: string
+        }
+        Update: {
+          story_id?: string
+          viewed_at?: string
+          viewer_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "story_views_story_id_fkey"
+            columns: ["story_id"]
+            isOneToOne: false
+            referencedRelation: "stories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_blocks: {
         Row: {
           blocked_id: string
@@ -423,6 +491,23 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      active_stories: {
+        Args: never
+        Returns: {
+          avatar_url: string
+          caption: string
+          created_at: string
+          display_name: string
+          expires_at: string
+          id: string
+          media_type: string
+          media_url: string
+          user_id: string
+          username: string
+          view_count: number
+          viewed_by_me: boolean
+        }[]
+      }
       admin_broadcast: { Args: { message: string }; Returns: number }
       admin_delete_message: { Args: { msg_id: string }; Returns: undefined }
       admin_delete_user: { Args: { target: string }; Returns: undefined }
@@ -500,9 +585,30 @@ export type Database = {
         }
         Returns: undefined
       }
+      create_channel: {
+        Args: {
+          p_avatar?: string
+          p_description?: string
+          p_name: string
+          p_public_username?: string
+        }
+        Returns: string
+      }
       create_group: {
         Args: { p_avatar?: string; p_members?: string[]; p_name: string }
         Returns: string
+      }
+      global_search: {
+        Args: { p_query: string }
+        Returns: {
+          avatar_url: string
+          id: string
+          is_verified: boolean
+          kind: string
+          member_count: number
+          name: string
+          username: string
+        }[]
       }
       group_join_by_token: { Args: { p_token: string }; Returns: string }
       group_members_list: {
@@ -526,15 +632,27 @@ export type Database = {
         Args: { p_gid: string; p_role: string; p_user: string }
         Returns: undefined
       }
-      group_update_settings: {
-        Args: {
-          p_avatar?: string
-          p_gid: string
-          p_lock_members?: boolean
-          p_name?: string
-        }
-        Returns: undefined
-      }
+      group_update_settings:
+        | {
+            Args: {
+              p_avatar?: string
+              p_gid: string
+              p_lock_members?: boolean
+              p_name?: string
+            }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              p_avatar?: string
+              p_description?: string
+              p_gid: string
+              p_lock_members?: boolean
+              p_name?: string
+              p_public_username?: string
+            }
+            Returns: undefined
+          }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -563,12 +681,15 @@ export type Database = {
         Args: never
         Returns: {
           avatar_url: string
+          description: string
           id: string
+          is_channel: boolean
           last_msg_at: string
           member_count: number
           my_role: string
           name: string
           owner_id: string
+          public_username: string
         }[]
       }
       rate_app: {
@@ -580,6 +701,7 @@ export type Database = {
         Returns: string
       }
       touch_last_seen: { Args: never; Returns: undefined }
+      view_story: { Args: { p_story: string }; Returns: undefined }
     }
     Enums: {
       app_role: "admin" | "user"

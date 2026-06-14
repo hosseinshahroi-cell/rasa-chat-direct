@@ -65,11 +65,16 @@ function ChatView() {
   const [deleteTarget, setDeleteTarget] = useState<Message | null>(null);
   const [forwardTarget, setForwardTarget] = useState<Message | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
+  const [peerLive, setPeerLive] = useState<{ online: boolean; typing: boolean; recording: boolean }>({ online: false, typing: false, recording: false });
   const fileRef = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLInputElement>(null);
   const recRef = useRef<MediaRecorder | null>(null);
   const recChunks = useRef<Blob[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const presenceChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const peerTypingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const peerRecordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSelf = me === otherId;
 
   useEffect(() => {
@@ -98,6 +103,15 @@ function ChatView() {
       return data;
     },
   });
+
+  const peerName = other?.display_name?.trim() || other?.username || "در حال بارگذاری...";
+  const peerStatus = peerLive.recording
+    ? "در حال ضبط صدا..."
+    : peerLive.typing
+      ? "در حال تایپ..."
+      : peerLive.online
+        ? "آنلاین"
+        : formatLastSeen(other?.last_seen_at);
 
   const { data: messages = [] } = useQuery<Message[]>({
     queryKey: ["messages", me, otherId],
@@ -163,7 +177,7 @@ function ChatView() {
     qc.invalidateQueries({ queryKey: ["reactions", me, otherId] });
   };
 
-  // realtime: messages + reactions
+  // realtime: messages + reactions + live status
   useEffect(() => {
     if (!me) return;
     const ch = supabase
@@ -181,9 +195,44 @@ function ChatView() {
       .on("postgres_changes", { event: "*", schema: "public", table: "message_reactions" }, () => {
         qc.invalidateQueries({ queryKey: ["reactions", me, otherId] });
       })
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
+      .on("presence", { event: "sync" }, () => {
+        const state = ch.presenceState<{ user_id: string }>();
+        const online = Object.values(state).flat().some((p) => p.user_id === otherId);
+        setPeerLive((prev) => ({ ...prev, online }));
+      })
+      .on("broadcast", { event: "typing" }, ({ payload }) => {
+        if ((payload as { user_id?: string }).user_id !== otherId) return;
+        setPeerLive((prev) => ({ ...prev, typing: true }));
+        if (peerTypingTimerRef.current) clearTimeout(peerTypingTimerRef.current);
+        peerTypingTimerRef.current = setTimeout(() => setPeerLive((prev) => ({ ...prev, typing: false })), 2500);
+      })
+      .on("broadcast", { event: "recording" }, ({ payload }) => {
+        const data = payload as { user_id?: string; active?: boolean };
+        if (data.user_id !== otherId) return;
+        setPeerLive((prev) => ({ ...prev, recording: !!data.active }));
+        if (peerRecordingTimerRef.current) clearTimeout(peerRecordingTimerRef.current);
+        if (data.active) peerRecordingTimerRef.current = setTimeout(() => setPeerLive((prev) => ({ ...prev, recording: false })), 5000);
+      })
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") ch.track({ user_id: me, online_at: new Date().toISOString() });
+      });
+    presenceChannelRef.current = ch;
+    return () => {
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+      if (peerTypingTimerRef.current) clearTimeout(peerTypingTimerRef.current);
+      if (peerRecordingTimerRef.current) clearTimeout(peerRecordingTimerRef.current);
+      presenceChannelRef.current = null;
+      supabase.removeChannel(ch);
+    };
   }, [me, otherId, qc, isSelf]);
+
+  const updateText = (value: string) => {
+    setText(value);
+    if (!me || isSelf) return;
+    presenceChannelRef.current?.send({ type: "broadcast", event: "typing", payload: { user_id: me } });
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    typingTimerRef.current = setTimeout(() => {}, 1200);
+  };
 
   // mark as read
   useEffect(() => {
@@ -286,11 +335,16 @@ function ChatView() {
       mr.start();
       recRef.current = mr;
       setRecording(true);
+      presenceChannelRef.current?.send({ type: "broadcast", event: "recording", payload: { user_id: me, active: true } });
     } catch {
       toast.error("دسترسی به میکروفون داده نشد");
     }
   };
-  const stopRecord = () => { recRef.current?.stop(); setRecording(false); };
+  const stopRecord = () => {
+    recRef.current?.stop();
+    setRecording(false);
+    if (me) presenceChannelRef.current?.send({ type: "broadcast", event: "recording", payload: { user_id: me, active: false } });
+  };
 
   const togglePin = async (m: Message) => {
     const { error } = await supabase.from("messages").update({ is_pinned: !m.is_pinned }).eq("id", m.id);
@@ -358,10 +412,13 @@ function ChatView() {
                   params={{ username: other.username }}
                   className="flex items-center gap-3 flex-1 min-w-0 hover:opacity-80 transition"
                 >
-                  <UserAvatar avatarPath={other.avatar_url} name={other.display_name || other.username} verified={other.is_verified} className="w-10 h-10" />
+                  <div className="relative shrink-0">
+                    <UserAvatar avatarPath={other.avatar_url} name={peerName} verified={other.is_verified} className="w-10 h-10" />
+                    <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full ring-2 ring-background ${peerLive.online ? "bg-[color:var(--color-success)]" : "bg-muted-foreground/40"}`} />
+                  </div>
                   <div className="flex-1 min-w-0 text-right">
                     <p className="font-semibold truncate flex items-center gap-1">
-                      {other.display_name || other.username}
+                      {peerName}
                       {other.is_verified && <BadgeCheck className="w-4 h-4 text-primary fill-primary stroke-background shrink-0" />}
                       {other.is_scammer && (
                         <span className="inline-flex items-center gap-0.5 text-[10px] bg-destructive/15 text-destructive px-1.5 py-0.5 rounded-full">
@@ -369,8 +426,8 @@ function ChatView() {
                         </span>
                       )}
                     </p>
-                    <p className={`text-xs truncate ${formatLastSeen(other.last_seen_at) === "آنلاین" ? "text-primary" : "text-muted-foreground"}`}>
-                      {formatLastSeen(other.last_seen_at)}
+                    <p className={`text-xs truncate ${peerLive.online || peerLive.typing || peerLive.recording ? "text-primary" : "text-muted-foreground"}`}>
+                      {peerStatus}
                     </p>
                   </div>
                 </Link>
@@ -503,14 +560,14 @@ function ChatView() {
           )}
           <Input
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => updateText(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 submitText();
               }
             }}
-            placeholder={editing ? "متن جدید..." : "پیام..."}
+             placeholder={recording ? "در حال ضبط صدا..." : editing ? "متن جدید..." : "پیام..."}
             className="flex-1"
           />
           {text.trim() || editing ? (

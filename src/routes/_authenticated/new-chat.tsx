@@ -3,10 +3,11 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { UserAvatar } from "@/components/UserAvatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ArrowRight, Search, Loader2, BadgeCheck, Camera, Users, Check } from "lucide-react";
+import { ArrowRight, Search, Loader2, BadgeCheck, Camera, Users, Check, Radio } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/new-chat")({
@@ -54,9 +55,10 @@ function NewChat() {
       </header>
       <main className="max-w-2xl mx-auto p-3">
         <Tabs defaultValue="direct">
-          <TabsList className="w-full grid grid-cols-2">
+          <TabsList className="w-full grid grid-cols-3">
             <TabsTrigger value="direct">گفت‌وگوی شخصی</TabsTrigger>
             <TabsTrigger value="group"><Users className="w-4 h-4 ml-1" /> گروه جدید</TabsTrigger>
+            <TabsTrigger value="channel"><Radio className="w-4 h-4 ml-1" /> کانال</TabsTrigger>
           </TabsList>
 
           <TabsContent value="direct" className="mt-3">
@@ -96,8 +98,78 @@ function NewChat() {
           <TabsContent value="group" className="mt-3">
             <CreateGroupPanel me={me} onCreated={(gid) => { toast.success("گروه ساخته شد"); navigate({ to: "/group/$groupId", params: { groupId: gid } }); }} />
           </TabsContent>
+
+          <TabsContent value="channel" className="mt-3">
+            <CreateChannelPanel me={me} onCreated={(gid) => { toast.success("کانال ساخته شد"); navigate({ to: "/group/$groupId", params: { groupId: gid } }); }} />
+          </TabsContent>
         </Tabs>
       </main>
+    </div>
+  );
+}
+
+function CreateChannelPanel({ me, onCreated }: { me: string | null; onCreated: (gid: string) => void }) {
+  const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
+  const [description, setDescription] = useState("");
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const onAvatar = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]; if (!f) return;
+    setAvatarFile(f); setAvatarPreview(URL.createObjectURL(f));
+  };
+
+  const create = async () => {
+    if (!name.trim()) { toast.error("نام کانال را وارد کنید"); return; }
+    if (!me) return;
+    setBusy(true);
+    try {
+      let avatarPath: string | null = null;
+      if (avatarFile) {
+        const ext = avatarFile.name.split(".").pop() || "jpg";
+        const path = `${me}/channel-${Date.now()}.${ext}`;
+        const { error: upErr } = await supabase.storage.from("avatars").upload(path, avatarFile);
+        if (upErr) throw upErr;
+        avatarPath = path;
+      }
+      const { data, error } = await (supabase.rpc as any)("create_channel", {
+        p_name: name.trim(),
+        p_avatar: avatarPath ?? undefined,
+        p_description: description.trim() || undefined,
+        p_public_username: username.trim() || undefined,
+      });
+      if (error) throw error;
+      onCreated(data as string);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "خطا در ساخت کانال");
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col items-center gap-2">
+        <button onClick={() => fileRef.current?.click()}>
+          <Avatar className="w-20 h-20 ring-2 ring-primary/20">
+            {avatarPreview && <AvatarImage src={avatarPreview} />}
+            <AvatarFallback className="bg-primary/10"><Radio className="w-6 h-6 text-primary" /></AvatarFallback>
+          </Avatar>
+        </button>
+        <input ref={fileRef} type="file" accept="image/*" hidden onChange={onAvatar} />
+        <p className="text-[10px] text-muted-foreground">عکس کانال (اختیاری)</p>
+      </div>
+      <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="نام کانال..." maxLength={80} />
+      <div className="relative">
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">@</span>
+        <Input value={username} onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, "").toLowerCase())} placeholder="channel_id اختیاری" className="pr-7" dir="ltr" maxLength={30} />
+      </div>
+      <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="توضیحات کانال..." maxLength={180} />
+      <Button onClick={create} disabled={busy || !name.trim()} className="w-full">
+        {busy && <Loader2 className="w-4 h-4 ml-2 animate-spin" />}
+        ساخت کانال
+      </Button>
     </div>
   );
 }
