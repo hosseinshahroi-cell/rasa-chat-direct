@@ -4,7 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/UserAvatar";
-import { MessageCirclePlus, Settings, Shield, MessageCircle, Bookmark, BadgeCheck } from "lucide-react";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { MessageCirclePlus, Settings, Shield, MessageCircle, Bookmark, BadgeCheck, Users } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { formatRelativeTime } from "@/lib/format";
 
@@ -14,15 +15,16 @@ export const Route = createFileRoute("/_authenticated/chats/")({
 });
 
 interface ChatItem {
-  other_id: string;
-  other_username: string;
-  other_display_name: string | null;
-  other_avatar: string | null;
-  other_verified: boolean;
+  kind: "dm" | "group";
+  id: string;
+  name: string;
+  avatar: string | null;
+  verified: boolean;
   last_content: string | null;
   last_attachment_type: string | null;
   last_at: string;
   unread: number;
+  member_count?: number;
 }
 
 function ChatsList() {
@@ -38,7 +40,6 @@ function ChatsList() {
     });
   }, []);
 
-  // heartbeat
   useEffect(() => {
     if (!userId) return;
     supabase.rpc("touch_last_seen");
@@ -52,30 +53,31 @@ function ChatsList() {
     refetchInterval: 30000,
     queryFn: async () => {
       if (!userId) return [];
+
+      // 1) Direct messages
       const { data: msgs, error } = await supabase
         .from("messages")
-        .select("id, sender_id, receiver_id, content, attachment_type, read_at, created_at, deleted_for_everyone, deleted_for")
+        .select("id, sender_id, receiver_id, group_id, content, attachment_type, read_at, created_at, deleted_for_everyone, deleted_for")
         .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
+        .is("group_id", null)
         .order("created_at", { ascending: false })
         .limit(500);
       if (error) throw error;
-      const filtered = (msgs ?? []).filter((m: { deleted_for: string[] | null; receiver_id: string | null }) =>
-        m.receiver_id !== null && !(m.deleted_for || []).includes(userId)
+
+      const filtered = (msgs ?? []).filter(
+        (m: { deleted_for: string[] | null; receiver_id: string | null }) =>
+          m.receiver_id !== null && !(m.deleted_for || []).includes(userId)
       );
-      const grouped = new Map<string, ChatItem>();
+      const dms = new Map<string, ChatItem>();
       const unreadCounts = new Map<string, number>();
       for (const m of filtered) {
         const other = (m.sender_id === userId ? m.receiver_id : m.sender_id) as string;
         if (m.receiver_id === userId && !m.read_at && !m.deleted_for_everyone) {
           unreadCounts.set(other, (unreadCounts.get(other) || 0) + 1);
         }
-        if (!grouped.has(other)) {
-          grouped.set(other, {
-            other_id: other,
-            other_username: "",
-            other_display_name: null,
-            other_avatar: null,
-            other_verified: false,
+        if (!dms.has(other)) {
+          dms.set(other, {
+            kind: "dm", id: other, name: "", avatar: null, verified: false,
             last_content: m.deleted_for_everyone ? "🚫 پیام حذف شده" : m.content,
             last_attachment_type: m.deleted_for_everyone ? null : m.attachment_type,
             last_at: m.created_at,
@@ -83,27 +85,39 @@ function ChatsList() {
           });
         }
       }
-      const ids = Array.from(grouped.keys());
+      const ids = Array.from(dms.keys());
       if (ids.length) {
         const { data: profs } = await supabase
           .from("profiles")
           .select("id, username, display_name, avatar_url, is_verified")
           .in("id", ids);
         for (const p of profs ?? []) {
-          const c = grouped.get(p.id);
+          const c = dms.get(p.id);
           if (c) {
-            c.other_username = p.username;
-            c.other_display_name = p.display_name;
-            c.other_avatar = p.avatar_url;
-            c.other_verified = p.is_verified;
+            c.name = p.display_name || p.username;
+            c.avatar = p.avatar_url;
+            c.verified = p.is_verified;
             c.unread = unreadCounts.get(p.id) || 0;
           }
         }
       }
-      return Array.from(grouped.values()).sort((a, b) => b.last_at.localeCompare(a.last_at));
+
+      // 2) Groups
+      const { data: groups } = await supabase.rpc("my_groups");
+      const groupItems: ChatItem[] = (groups || []).map((g: {
+        id: string; name: string; avatar_url: string | null;
+        member_count: number; last_msg_at: string | null;
+      }) => ({
+        kind: "group", id: g.id, name: g.name, avatar: g.avatar_url,
+        verified: false, last_content: null, last_attachment_type: null,
+        last_at: g.last_msg_at || new Date(0).toISOString(),
+        unread: 0, member_count: Number(g.member_count),
+      }));
+
+      return [...Array.from(dms.values()), ...groupItems]
+        .sort((a, b) => b.last_at.localeCompare(a.last_at));
     },
   });
-
 
   return (
     <div className="min-h-screen bg-background">
@@ -155,33 +169,27 @@ function ChatsList() {
         ) : (
           <ul className="divide-y">
             {chats.map((c) => (
-              <li key={c.other_id}>
-                <Link
-                  to="/chats/$userId" params={{ userId: c.other_id }}
-                  className="flex items-center gap-3 px-4 py-3 hover:bg-accent/50 transition"
-                >
-                  <UserAvatar avatarPath={c.other_avatar} name={c.other_display_name || c.other_username} verified={c.other_verified} className="w-12 h-12" />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="font-semibold truncate flex items-center gap-1">
-                        {c.other_display_name || c.other_username}
-                        {c.other_verified && <BadgeCheck className="w-4 h-4 text-primary fill-primary stroke-background shrink-0" />}
-                      </span>
-                      <span className="text-xs text-muted-foreground shrink-0">{formatRelativeTime(c.last_at)}</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm text-muted-foreground truncate">
-                        {c.last_attachment_type === "image" ? "🖼 عکس" :
-                         c.last_attachment_type === "audio" ? "🎤 پیام صوتی" :
-                         c.last_attachment_type === "file" ? "📎 فایل" :
-                         c.last_content || "..."}
-                      </p>
-                      {c.unread > 0 && (
-                        <span className="bg-primary text-primary-foreground text-xs rounded-full min-w-5 h-5 px-1.5 flex items-center justify-center font-medium">{c.unread}</span>
-                      )}
-                    </div>
-                  </div>
-                </Link>
+              <li key={`${c.kind}-${c.id}`}>
+                {c.kind === "dm" ? (
+                  <Link
+                    to="/chats/$userId" params={{ userId: c.id }}
+                    className="flex items-center gap-3 px-4 py-3 hover:bg-accent/50 transition"
+                  >
+                    <UserAvatar avatarPath={c.avatar} name={c.name} verified={c.verified} className="w-12 h-12" />
+                    <ChatRowBody c={c} />
+                  </Link>
+                ) : (
+                  <Link
+                    to="/group/$groupId" params={{ groupId: c.id }}
+                    className="flex items-center gap-3 px-4 py-3 hover:bg-accent/50 transition"
+                  >
+                    <Avatar className="w-12 h-12 shrink-0">
+                      {c.avatar && <AvatarImage src={c.avatar} />}
+                      <AvatarFallback className="bg-primary/15 text-primary"><Users className="w-6 h-6" /></AvatarFallback>
+                    </Avatar>
+                    <ChatRowBody c={c} />
+                  </Link>
+                )}
               </li>
             ))}
           </ul>
@@ -193,6 +201,36 @@ function ChatsList() {
           <MessageCirclePlus className="w-6 h-6" />
         </Button>
       </Link>
+    </div>
+  );
+}
+
+function ChatRowBody({ c }: { c: ChatItem }) {
+  return (
+    <div className="flex-1 min-w-0">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="font-semibold truncate flex items-center gap-1">
+          {c.name || (c.kind === "group" ? "گروه" : "...")}
+          {c.verified && <BadgeCheck className="w-4 h-4 text-primary fill-primary stroke-background shrink-0" />}
+          {c.kind === "group" && <Users className="w-3.5 h-3.5 text-muted-foreground" />}
+        </span>
+        <span className="text-xs text-muted-foreground shrink-0">
+          {c.last_at && c.last_at !== new Date(0).toISOString() ? formatRelativeTime(c.last_at) : ""}
+        </span>
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground truncate">
+          {c.kind === "group"
+            ? `${c.member_count ?? 0} عضو`
+            : c.last_attachment_type === "image" ? "🖼 عکس"
+            : c.last_attachment_type === "audio" ? "🎤 پیام صوتی"
+            : c.last_attachment_type === "file" ? "📎 فایل"
+            : c.last_content || "..."}
+        </p>
+        {c.unread > 0 && (
+          <span className="bg-primary text-primary-foreground text-xs rounded-full min-w-5 h-5 px-1.5 flex items-center justify-center font-medium">{c.unread}</span>
+        )}
+      </div>
     </div>
   );
 }

@@ -94,7 +94,7 @@ function NewChat() {
           </TabsContent>
 
           <TabsContent value="group" className="mt-3">
-            <CreateGroupPanel me={me} onCreated={(gid) => toast.success("گروه ساخته شد")} />
+            <CreateGroupPanel me={me} onCreated={(gid) => { toast.success("گروه ساخته شد"); navigate({ to: "/group/$groupId", params: { groupId: gid } }); }} />
           </TabsContent>
         </Tabs>
       </main>
