@@ -47,7 +47,29 @@ export function IncomingCallListener() {
             });
           }
         )
-        .subscribe();
+        .subscribe(async (status) => {
+          if (status !== "SUBSCRIBED" || cancelled) return;
+          const { data: recent } = await supabase
+            .from("call_signals")
+            .select("call_id, from_user, created_at")
+            .eq("to_user", me)
+            .eq("kind", "offer")
+            .gt("created_at", new Date(Date.now() - 45000).toISOString())
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (!recent || window.location.pathname.startsWith("/call/")) return;
+          const { data: p } = await supabase
+            .from("profiles")
+            .select("username, display_name, avatar_url")
+            .eq("id", recent.from_user).maybeSingle();
+          setIncoming({
+            callId: recent.call_id,
+            fromUser: recent.from_user,
+            fromName: p?.display_name || p?.username || "ناشناس",
+            fromAvatar: p?.avatar_url ?? null,
+          });
+        });
       if (cancelled) { supabase.removeChannel(ch); return; }
       channelRef.current = ch;
     })();
