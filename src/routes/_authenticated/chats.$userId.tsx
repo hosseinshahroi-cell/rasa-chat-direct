@@ -412,10 +412,13 @@ function ChatView() {
                   params={{ username: other.username }}
                   className="flex items-center gap-3 flex-1 min-w-0 hover:opacity-80 transition"
                 >
-                  <UserAvatar avatarPath={other.avatar_url} name={other.display_name || other.username} verified={other.is_verified} className="w-10 h-10" />
+                  <div className="relative shrink-0">
+                    <UserAvatar avatarPath={other.avatar_url} name={peerName} verified={other.is_verified} className="w-10 h-10" />
+                    <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full ring-2 ring-background ${peerLive.online ? "bg-[color:var(--color-success)]" : "bg-muted-foreground/40"}`} />
+                  </div>
                   <div className="flex-1 min-w-0 text-right">
                     <p className="font-semibold truncate flex items-center gap-1">
-                      {other.display_name || other.username}
+                      {peerName}
                       {other.is_verified && <BadgeCheck className="w-4 h-4 text-primary fill-primary stroke-background shrink-0" />}
                       {other.is_scammer && (
                         <span className="inline-flex items-center gap-0.5 text-[10px] bg-destructive/15 text-destructive px-1.5 py-0.5 rounded-full">
@@ -423,8 +426,8 @@ function ChatView() {
                         </span>
                       )}
                     </p>
-                    <p className={`text-xs truncate ${formatLastSeen(other.last_seen_at) === "آنلاین" ? "text-primary" : "text-muted-foreground"}`}>
-                      {formatLastSeen(other.last_seen_at)}
+                    <p className={`text-xs truncate ${peerLive.online || peerLive.typing || peerLive.recording ? "text-primary" : "text-muted-foreground"}`}>
+                      {peerStatus}
                     </p>
                   </div>
                 </Link>
@@ -557,14 +560,14 @@ function ChatView() {
           )}
           <Input
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => updateText(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 submitText();
               }
             }}
-            placeholder={editing ? "متن جدید..." : "پیام..."}
+             placeholder={recording ? "در حال ضبط صدا..." : editing ? "متن جدید..." : "پیام..."}
             className="flex-1"
           />
           {text.trim() || editing ? (
