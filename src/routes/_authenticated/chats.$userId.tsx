@@ -65,11 +65,16 @@ function ChatView() {
   const [deleteTarget, setDeleteTarget] = useState<Message | null>(null);
   const [forwardTarget, setForwardTarget] = useState<Message | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
+  const [peerLive, setPeerLive] = useState<{ online: boolean; typing: boolean; recording: boolean }>({ online: false, typing: false, recording: false });
   const fileRef = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLInputElement>(null);
   const recRef = useRef<MediaRecorder | null>(null);
   const recChunks = useRef<Blob[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const presenceChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const peerTypingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const peerRecordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSelf = me === otherId;
 
   useEffect(() => {
@@ -98,6 +103,15 @@ function ChatView() {
       return data;
     },
   });
+
+  const peerName = other?.display_name?.trim() || other?.username || "در حال بارگذاری...";
+  const peerStatus = peerLive.recording
+    ? "در حال ضبط صدا..."
+    : peerLive.typing
+      ? "در حال تایپ..."
+      : peerLive.online
+        ? "آنلاین"
+        : formatLastSeen(other?.last_seen_at);
 
   const { data: messages = [] } = useQuery<Message[]>({
     queryKey: ["messages", me, otherId],
@@ -163,7 +177,7 @@ function ChatView() {
     qc.invalidateQueries({ queryKey: ["reactions", me, otherId] });
   };
 
-  // realtime: messages + reactions
+  // realtime: messages + reactions + live status
   useEffect(() => {
     if (!me) return;
     const ch = supabase
@@ -181,9 +195,44 @@ function ChatView() {
       .on("postgres_changes", { event: "*", schema: "public", table: "message_reactions" }, () => {
         qc.invalidateQueries({ queryKey: ["reactions", me, otherId] });
       })
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
+      .on("presence", { event: "sync" }, () => {
+        const state = ch.presenceState<{ user_id: string }>();
+        const online = Object.values(state).flat().some((p) => p.user_id === otherId);
+        setPeerLive((prev) => ({ ...prev, online }));
+      })
+      .on("broadcast", { event: "typing" }, ({ payload }) => {
+        if ((payload as { user_id?: string }).user_id !== otherId) return;
+        setPeerLive((prev) => ({ ...prev, typing: true }));
+        if (peerTypingTimerRef.current) clearTimeout(peerTypingTimerRef.current);
+        peerTypingTimerRef.current = setTimeout(() => setPeerLive((prev) => ({ ...prev, typing: false })), 2500);
+      })
+      .on("broadcast", { event: "recording" }, ({ payload }) => {
+        const data = payload as { user_id?: string; active?: boolean };
+        if (data.user_id !== otherId) return;
+        setPeerLive((prev) => ({ ...prev, recording: !!data.active }));
+        if (peerRecordingTimerRef.current) clearTimeout(peerRecordingTimerRef.current);
+        if (data.active) peerRecordingTimerRef.current = setTimeout(() => setPeerLive((prev) => ({ ...prev, recording: false })), 5000);
+      })
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") ch.track({ user_id: me, online_at: new Date().toISOString() });
+      });
+    presenceChannelRef.current = ch;
+    return () => {
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+      if (peerTypingTimerRef.current) clearTimeout(peerTypingTimerRef.current);
+      if (peerRecordingTimerRef.current) clearTimeout(peerRecordingTimerRef.current);
+      presenceChannelRef.current = null;
+      supabase.removeChannel(ch);
+    };
   }, [me, otherId, qc, isSelf]);
+
+  const updateText = (value: string) => {
+    setText(value);
+    if (!me || isSelf) return;
+    presenceChannelRef.current?.send({ type: "broadcast", event: "typing", payload: { user_id: me } });
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    typingTimerRef.current = setTimeout(() => {}, 1200);
+  };
 
   // mark as read
   useEffect(() => {
@@ -286,11 +335,16 @@ function ChatView() {
       mr.start();
       recRef.current = mr;
       setRecording(true);
+      presenceChannelRef.current?.send({ type: "broadcast", event: "recording", payload: { user_id: me, active: true } });
     } catch {
       toast.error("دسترسی به میکروفون داده نشد");
     }
   };
-  const stopRecord = () => { recRef.current?.stop(); setRecording(false); };
+  const stopRecord = () => {
+    recRef.current?.stop();
+    setRecording(false);
+    if (me) presenceChannelRef.current?.send({ type: "broadcast", event: "recording", payload: { user_id: me, active: false } });
+  };
 
   const togglePin = async (m: Message) => {
     const { error } = await supabase.from("messages").update({ is_pinned: !m.is_pinned }).eq("id", m.id);
