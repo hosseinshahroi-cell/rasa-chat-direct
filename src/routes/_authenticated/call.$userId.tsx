@@ -34,6 +34,7 @@ function CallView() {
   const callIdRef = useRef<string>(incoming || crypto.randomUUID());
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const isCallerRef = useRef<boolean>(!incoming);
+  const iceQueueRef = useRef<RTCIceCandidateInit[]>([]);
 
   // load me + peer
   useEffect(() => {
@@ -97,7 +98,14 @@ function CallView() {
         }
       };
 
+      const addQueuedIce = async () => {
+        const queued = [...iceQueueRef.current];
+        iceQueueRef.current = [];
+        for (const candidate of queued) await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      };
+
       // 3) Signaling channel
+      let started = false;
       const ch = supabase
         .channel(`call-${callIdRef.current}`)
         .on(
@@ -109,41 +117,46 @@ function CallView() {
             try {
               if (sig.kind === "offer" && !isCallerRef.current) {
                 await pc.setRemoteDescription(new RTCSessionDescription(sig.payload as RTCSessionDescriptionInit));
+                await addQueuedIce();
                 const answer = await pc.createAnswer();
                 await pc.setLocalDescription(answer);
                 await sendSignal("answer", answer);
               } else if (sig.kind === "answer" && isCallerRef.current) {
                 await pc.setRemoteDescription(new RTCSessionDescription(sig.payload as RTCSessionDescriptionInit));
+                await addQueuedIce();
               } else if (sig.kind === "ice") {
-                await pc.addIceCandidate(new RTCIceCandidate(sig.payload as RTCIceCandidateInit));
+                const candidate = sig.payload as RTCIceCandidateInit;
+                if (pc.remoteDescription) await pc.addIceCandidate(new RTCIceCandidate(candidate));
+                else iceQueueRef.current.push(candidate);
               } else if (sig.kind === "hangup") {
                 setStatus("ended");
               }
             } catch (e) { console.error("signal err", e); }
           }
         )
-        .subscribe();
+        .subscribe(async (subStatus) => {
+          if (subStatus !== "SUBSCRIBED" || started || cancelled) return;
+          started = true;
+          if (isCallerRef.current) {
+            setStatus("calling");
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            await sendSignal("offer", offer);
+          } else {
+            setStatus("ringing");
+            const { data: existing } = await supabase
+              .from("call_signals").select("kind, payload, from_user")
+              .eq("call_id", callIdRef.current).eq("kind", "offer").maybeSingle();
+            if (existing && existing.from_user !== me) {
+              await pc.setRemoteDescription(new RTCSessionDescription(existing.payload as unknown as RTCSessionDescriptionInit));
+              await addQueuedIce();
+              const answer = await pc.createAnswer();
+              await pc.setLocalDescription(answer);
+              await sendSignal("answer", answer);
+            }
+          }
+        });
       channelRef.current = ch;
-
-      // 4) If caller, create offer
-      if (isCallerRef.current) {
-        setStatus("calling");
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        await sendSignal("offer", offer);
-      } else {
-        setStatus("ringing");
-        // load any existing offer
-        const { data: existing } = await supabase
-          .from("call_signals").select("kind, payload, from_user")
-          .eq("call_id", callIdRef.current).eq("kind", "offer").maybeSingle();
-        if (existing && existing.from_user !== me) {
-          await pc.setRemoteDescription(new RTCSessionDescription(existing.payload as unknown as RTCSessionDescriptionInit));
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-          await sendSignal("answer", answer);
-        }
-      }
     })();
 
     return () => {
