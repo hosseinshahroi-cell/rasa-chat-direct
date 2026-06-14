@@ -376,8 +376,11 @@ function ChatView() {
                 </Link>
               ) : (
                 <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center"><UserIcon className="w-5 h-5 text-muted-foreground" /></div>
-                  <p className="font-semibold truncate">کاربر</p>
+                  <div className="w-10 h-10 rounded-full bg-muted animate-pulse" />
+                  <div className="flex-1 min-w-0 space-y-1.5">
+                    <div className="h-3 w-24 bg-muted rounded animate-pulse" />
+                    <div className="h-2.5 w-16 bg-muted/70 rounded animate-pulse" />
+                  </div>
                 </div>
               )}
               <Link to="/call/$userId" params={{ userId: otherId }}>
