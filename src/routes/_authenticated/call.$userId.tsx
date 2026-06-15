@@ -65,10 +65,6 @@ function CallView() {
       });
     };
 
-    const cleanupSignals = async () => {
-      await supabase.from("call_signals").delete().eq("call_id", callIdRef.current);
-    };
-
     (async () => {
       // 1) Get mic
       let stream: MediaStream;
@@ -194,7 +190,6 @@ function CallView() {
       localStreamRef.current?.getTracks().forEach((t) => t.stop());
       if (channelRef.current) supabase.removeChannel(channelRef.current);
       sendSignal("hangup", {}).catch(() => {});
-      setTimeout(() => cleanupSignals().catch(() => {}), 5000);
     };
   }, [me, peerId, navigate]);
 
