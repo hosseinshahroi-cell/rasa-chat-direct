@@ -37,6 +37,7 @@ function CallView() {
   const isCallerRef = useRef<boolean>(!incoming);
   const iceQueueRef = useRef<RTCIceCandidateInit[]>([]);
   const processedSignalsRef = useRef<Set<string>>(new Set());
+  const drainTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // load me + peer
   useEffect(() => {
@@ -153,7 +154,6 @@ function CallView() {
 
       // 3) Signaling channel
       let started = false;
-      let drainTimer: ReturnType<typeof setInterval> | null = null;
       const ch = supabase
         .channel(`call-${callIdRef.current}-${me}`)
         .on(
@@ -173,18 +173,23 @@ function CallView() {
             setStatus("ringing");
             await drainExistingSignals();
           }
-          drainTimer = setInterval(() => {
+          drainTimerRef.current = setInterval(() => {
             if (pc.connectionState !== "connected" && pc.connectionState !== "closed") drainExistingSignals();
           }, 1500);
         });
       channelRef.current = ch;
-      const oldCleanup = () => { if (drainTimer) clearInterval(drainTimer); };
-      pc.addEventListener("connectionstatechange", () => { if (pc.connectionState === "connected") oldCleanup(); });
+      const stopDrain = () => {
+        if (drainTimerRef.current) clearInterval(drainTimerRef.current);
+        drainTimerRef.current = null;
+      };
+      pc.addEventListener("connectionstatechange", () => { if (pc.connectionState === "connected") stopDrain(); });
     })();
 
     return () => {
       cancelled = true;
       try { pcRef.current?.getSenders().forEach((s) => s.track?.stop()); } catch { /* noop */ }
+      if (drainTimerRef.current) clearInterval(drainTimerRef.current);
+      drainTimerRef.current = null;
       pcRef.current?.close();
       localStreamRef.current?.getTracks().forEach((t) => t.stop());
       if (channelRef.current) supabase.removeChannel(channelRef.current);
