@@ -7,6 +7,7 @@ import { Phone, PhoneOff, Mic, MicOff, Volume2, ArrowRight, Loader2 } from "luci
 import { toast } from "sonner";
 
 interface CallSearch { incoming?: string }
+interface CallSignalRow { id?: string; kind: string; from_user: string; payload: unknown; created_at?: string }
 
 export const Route = createFileRoute("/_authenticated/call/$userId")({
   head: () => ({ meta: [{ title: "تماس صوتی - رسا" }] }),
@@ -35,6 +36,8 @@ function CallView() {
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const isCallerRef = useRef<boolean>(!incoming);
   const iceQueueRef = useRef<RTCIceCandidateInit[]>([]);
+  const processedSignalsRef = useRef<Set<string>>(new Set());
+  const drainTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // load me + peer
   useEffect(() => {
@@ -62,10 +65,6 @@ function CallView() {
       });
     };
 
-    const cleanupSignals = async () => {
-      await supabase.from("call_signals").delete().eq("call_id", callIdRef.current);
-    };
-
     (async () => {
       // 1) Get mic
       let stream: MediaStream;
@@ -80,7 +79,7 @@ function CallView() {
       localStreamRef.current = stream;
 
       // 2) PeerConnection
-      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS, iceCandidatePoolSize: 10 });
       pcRef.current = pc;
       stream.getTracks().forEach((t) => pc.addTrack(t, stream));
 
@@ -93,46 +92,70 @@ function CallView() {
       };
       pc.onconnectionstatechange = () => {
         if (pc.connectionState === "connected") setStatus("connected");
-        else if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
-          setStatus("ended");
-        }
+        else if (pc.connectionState === "failed" || pc.connectionState === "closed") setStatus("ended");
+      };
+      pc.oniceconnectionstatechange = () => {
+        if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") setStatus("connected");
+        if (pc.iceConnectionState === "failed") setStatus("ended");
       };
 
       const addQueuedIce = async () => {
+        if (!pc.remoteDescription) return;
         const queued = [...iceQueueRef.current];
         iceQueueRef.current = [];
-        for (const candidate of queued) await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        for (const candidate of queued) {
+          try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); }
+          catch (err) { console.warn("queued ice failed", err); }
+        }
+      };
+
+      const processSignal = async (sig: CallSignalRow) => {
+        const key = sig.id || `${sig.kind}-${sig.from_user}-${sig.created_at || ""}`;
+        if (processedSignalsRef.current.has(key)) return;
+        processedSignalsRef.current.add(key);
+        if (sig.from_user === me) return;
+        try {
+          if (sig.kind === "offer" && !isCallerRef.current) {
+            if (!pc.remoteDescription) {
+              await pc.setRemoteDescription(new RTCSessionDescription(sig.payload as RTCSessionDescriptionInit));
+              await addQueuedIce();
+              const answer = await pc.createAnswer();
+              await pc.setLocalDescription(answer);
+              await sendSignal("answer", answer);
+            }
+          } else if (sig.kind === "answer" && isCallerRef.current) {
+            if (!pc.remoteDescription) {
+              await pc.setRemoteDescription(new RTCSessionDescription(sig.payload as RTCSessionDescriptionInit));
+              await addQueuedIce();
+            }
+          } else if (sig.kind === "ice") {
+            const candidate = sig.payload as RTCIceCandidateInit;
+            if (pc.remoteDescription) await pc.addIceCandidate(new RTCIceCandidate(candidate));
+            else iceQueueRef.current.push(candidate);
+          } else if (sig.kind === "hangup" || sig.kind === "reject") {
+            setStatus("ended");
+          }
+        } catch (e) { console.error("signal err", e); }
+      };
+
+      const drainExistingSignals = async () => {
+        const { data: existing } = await supabase
+          .from("call_signals")
+          .select("id, kind, from_user, payload, created_at")
+          .eq("call_id", callIdRef.current)
+          .order("created_at", { ascending: true })
+          .limit(200);
+        for (const sig of (existing || []) as CallSignalRow[]) await processSignal(sig);
       };
 
       // 3) Signaling channel
       let started = false;
       const ch = supabase
-        .channel(`call-${callIdRef.current}`)
+        .channel(`call-${callIdRef.current}-${me}`)
         .on(
           "postgres_changes",
           { event: "INSERT", schema: "public", table: "call_signals", filter: `call_id=eq.${callIdRef.current}` },
-          async (payload) => {
-            const sig = payload.new as { kind: string; from_user: string; payload: unknown };
-            if (sig.from_user === me) return;
-            try {
-              if (sig.kind === "offer" && !isCallerRef.current) {
-                await pc.setRemoteDescription(new RTCSessionDescription(sig.payload as RTCSessionDescriptionInit));
-                await addQueuedIce();
-                const answer = await pc.createAnswer();
-                await pc.setLocalDescription(answer);
-                await sendSignal("answer", answer);
-              } else if (sig.kind === "answer" && isCallerRef.current) {
-                await pc.setRemoteDescription(new RTCSessionDescription(sig.payload as RTCSessionDescriptionInit));
-                await addQueuedIce();
-              } else if (sig.kind === "ice") {
-                const candidate = sig.payload as RTCIceCandidateInit;
-                if (pc.remoteDescription) await pc.addIceCandidate(new RTCIceCandidate(candidate));
-                else iceQueueRef.current.push(candidate);
-              } else if (sig.kind === "hangup") {
-                setStatus("ended");
-              }
-            } catch (e) { console.error("signal err", e); }
-          }
+          (payload) => processSignal(payload.new as CallSignalRow)
         )
         .subscribe(async (subStatus) => {
           if (subStatus !== "SUBSCRIBED" || started || cancelled) return;
@@ -144,29 +167,29 @@ function CallView() {
             await sendSignal("offer", offer);
           } else {
             setStatus("ringing");
-            const { data: existing } = await supabase
-              .from("call_signals").select("kind, payload, from_user")
-              .eq("call_id", callIdRef.current).eq("kind", "offer").maybeSingle();
-            if (existing && existing.from_user !== me) {
-              await pc.setRemoteDescription(new RTCSessionDescription(existing.payload as unknown as RTCSessionDescriptionInit));
-              await addQueuedIce();
-              const answer = await pc.createAnswer();
-              await pc.setLocalDescription(answer);
-              await sendSignal("answer", answer);
-            }
+            await drainExistingSignals();
           }
+          drainTimerRef.current = setInterval(() => {
+            if (pc.connectionState !== "connected" && pc.connectionState !== "closed") drainExistingSignals();
+          }, 1500);
         });
       channelRef.current = ch;
+      const stopDrain = () => {
+        if (drainTimerRef.current) clearInterval(drainTimerRef.current);
+        drainTimerRef.current = null;
+      };
+      pc.addEventListener("connectionstatechange", () => { if (pc.connectionState === "connected") stopDrain(); });
     })();
 
     return () => {
       cancelled = true;
       try { pcRef.current?.getSenders().forEach((s) => s.track?.stop()); } catch { /* noop */ }
+      if (drainTimerRef.current) clearInterval(drainTimerRef.current);
+      drainTimerRef.current = null;
       pcRef.current?.close();
       localStreamRef.current?.getTracks().forEach((t) => t.stop());
       if (channelRef.current) supabase.removeChannel(channelRef.current);
       sendSignal("hangup", {}).catch(() => {});
-      cleanupSignals().catch(() => {});
     };
   }, [me, peerId, navigate]);
 

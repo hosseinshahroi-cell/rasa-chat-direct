@@ -105,11 +105,15 @@ function ChatView() {
   });
 
   const peerName = other?.display_name?.trim() || other?.username || "در حال بارگذاری...";
+  const recentLastSeen = other?.last_seen_at
+    ? Date.now() - new Date(other.last_seen_at).getTime() < 90_000
+    : false;
+  const peerOnline = peerLive.online || recentLastSeen;
   const peerStatus = peerLive.recording
     ? "در حال ضبط صدا..."
     : peerLive.typing
       ? "در حال تایپ..."
-      : peerLive.online
+      : peerOnline
         ? "آنلاین"
         : formatLastSeen(other?.last_seen_at);
 
@@ -180,8 +184,9 @@ function ChatView() {
   // realtime: messages + reactions + live status
   useEffect(() => {
     if (!me) return;
+    const liveTopic = isSelf ? `chat-live-self-${me}` : `chat-live-${[me, otherId].sort().join("-")}`;
     const ch = supabase
-      .channel(`chat-${me}-${otherId}`)
+      .channel(liveTopic, { config: { presence: { key: me }, broadcast: { self: false } } })
       .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, (payload) => {
         const m = (payload.new ?? payload.old) as Message;
         if (
@@ -194,6 +199,9 @@ function ChatView() {
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "message_reactions" }, () => {
         qc.invalidateQueries({ queryKey: ["reactions", me, otherId] });
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles", filter: `id=eq.${otherId}` }, () => {
+        qc.invalidateQueries({ queryKey: ["profile", otherId] });
       })
       .on("presence", { event: "sync" }, () => {
         const state = ch.presenceState<{ user_id: string }>();

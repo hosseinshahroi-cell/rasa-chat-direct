@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/UserAvatar";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { MessageCirclePlus, Settings, Shield, MessageCircle, Bookmark, BadgeCheck, Users, Search, Radio, Plus, Eye, Loader2, Camera, X } from "lucide-react";
+import { MessageCirclePlus, Settings, Shield, MessageCircle, Bookmark, BadgeCheck, Users, Search, Radio, Plus, Eye, Loader2, X, Trash2 } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { formatRelativeTime } from "@/lib/format";
 import { toast } from "sonner";
@@ -348,6 +348,16 @@ function StoriesBar({ me }: { me: string | null }) {
     } finally { setUploading(false); }
   };
 
+  const deleteStory = async (story: StoryItem) => {
+    if (!me || story.user_id !== me) return;
+    const { error } = await supabase.from("stories").delete().eq("id", story.id).eq("user_id", me);
+    if (error) { toast.error(error.message); return; }
+    await supabase.storage.from("chat-attachments").remove([story.media_url]);
+    toast.success("استوری حذف شد");
+    setViewer(null);
+    qc.invalidateQueries({ queryKey: ["stories"] });
+  };
+
   const grouped = useMemo(() => {
     const map = new Map<string, StoryItem>();
     stories.forEach((s) => { if (!map.has(s.user_id)) map.set(s.user_id, s); });
@@ -388,6 +398,11 @@ function StoriesBar({ me }: { me: string | null }) {
                     <p className="text-[11px] opacity-80">{formatRelativeTime(viewer.created_at)}</p>
                   </div>
                   <span className="inline-flex items-center gap-1 text-xs"><Eye className="w-3.5 h-3.5" /> {viewer.view_count}</span>
+                  {viewer.user_id === me && (
+                    <Button size="icon" variant="destructive" className="h-8 w-8 rounded-full" onClick={() => deleteStory(viewer)} title="حذف استوری">
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>
