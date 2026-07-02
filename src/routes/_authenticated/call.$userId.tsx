@@ -1,13 +1,19 @@
 import { createFileRoute, Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/UserAvatar";
-import { Phone, PhoneOff, Mic, MicOff, Volume2, ArrowRight, Loader2 } from "lucide-react";
+import { PhoneOff, Mic, MicOff, Volume2, ArrowRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { getAgoraToken } from "@/lib/agora.functions";
+import AgoraRTC, {
+  type IAgoraRTCClient,
+  type IMicrophoneAudioTrack,
+  type IAgoraRTCRemoteUser,
+} from "agora-rtc-sdk-ng";
 
 interface CallSearch { incoming?: string }
-interface CallSignalRow { id?: string; kind: string; from_user: string; payload: unknown; created_at?: string }
 
 export const Route = createFileRoute("/_authenticated/call/$userId")({
   head: () => ({ meta: [{ title: "تماس صوتی - رسا" }] }),
@@ -15,192 +21,160 @@ export const Route = createFileRoute("/_authenticated/call/$userId")({
   component: CallView,
 });
 
-const ICE_SERVERS = [
-  { urls: "stun:stun.l.google.com:19302" },
-  { urls: "stun:stun1.l.google.com:19302" },
-];
+// stable int uid from uuid (1 .. 2^31-1)
+function uuidToUid(uuid: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < uuid.length; i++) {
+    h ^= uuid.charCodeAt(i);
+    h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+  }
+  return (h % 2147483646) + 1;
+}
 
 function CallView() {
   const { userId: peerId } = Route.useParams();
   const { incoming } = useSearch({ from: "/_authenticated/call/$userId" });
   const navigate = useNavigate();
+  const fetchToken = useServerFn(getAgoraToken);
   const [me, setMe] = useState<string | null>(null);
   const [peer, setPeer] = useState<{ username: string; display_name: string | null; avatar_url: string | null } | null>(null);
   const [status, setStatus] = useState<"init" | "calling" | "ringing" | "connected" | "ended">("init");
   const [muted, setMuted] = useState(false);
   const [seconds, setSeconds] = useState(0);
-  const pcRef = useRef<RTCPeerConnection | null>(null);
-  const localStreamRef = useRef<MediaStream | null>(null);
-  const remoteAudioRef = useRef<HTMLAudioElement>(null);
-  const callIdRef = useRef<string>(incoming || crypto.randomUUID());
-  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
-  const isCallerRef = useRef<boolean>(!incoming);
-  const iceQueueRef = useRef<RTCIceCandidateInit[]>([]);
-  const processedSignalsRef = useRef<Set<string>>(new Set());
-  const drainTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // load me + peer
+  const clientRef = useRef<IAgoraRTCClient | null>(null);
+  const micRef = useRef<IMicrophoneAudioTrack | null>(null);
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const callIdRef = useRef<string>(incoming || crypto.randomUUID());
+  const isCallerRef = useRef<boolean>(!incoming);
+  const endedRef = useRef(false);
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setMe(data.user?.id ?? null));
     supabase.from("profiles").select("username, display_name, avatar_url").eq("id", peerId).maybeSingle()
       .then(({ data }) => setPeer(data));
   }, [peerId]);
 
-  // timer
   useEffect(() => {
     if (status !== "connected") return;
     const t = setInterval(() => setSeconds((s) => s + 1), 1000);
     return () => clearInterval(t);
   }, [status]);
 
-  // main signaling + WebRTC setup
   useEffect(() => {
     if (!me) return;
     let cancelled = false;
 
-    const sendSignal = async (kind: string, payload: unknown) => {
+    const sendSignal = async (kind: string, payload: Record<string, unknown> = {}) => {
       await supabase.from("call_signals").insert({
         from_user: me, to_user: peerId, call_id: callIdRef.current, kind,
         payload: payload as never,
       });
     };
 
-    (async () => {
-      // 1) Get mic
-      let stream: MediaStream;
+    const joinAgora = async () => {
+      if (cancelled) return;
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const uid = uuidToUid(me);
+        const channel = callIdRef.current;
+        const { appId, token } = await fetchToken({ data: { channel, uid } });
+        const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+        clientRef.current = client;
+        client.on("user-published", async (user: IAgoraRTCRemoteUser, mediaType) => {
+          await client.subscribe(user, mediaType);
+          if (mediaType === "audio") user.audioTrack?.play();
+          setStatus("connected");
+        });
+        client.on("user-unpublished", () => { /* peer muted */ });
+        client.on("user-left", () => {
+          if (!endedRef.current) { endedRef.current = true; setStatus("ended"); }
+        });
+        client.on("connection-state-change", (cur) => {
+          if (cur === "DISCONNECTED" && !endedRef.current) { endedRef.current = true; setStatus("ended"); }
+        });
+        await client.join(appId, channel, token, uid);
+        const mic = await AgoraRTC.createMicrophoneAudioTrack({ AEC: true, ANS: true, AGC: true });
+        micRef.current = mic;
+        await client.publish([mic]);
+        // if remote user already there, mark connected
+        if (client.remoteUsers.length > 0) setStatus("connected");
+      } catch (err) {
+        console.error("agora join error", err);
+        toast.error("خطا در برقراری تماس صوتی");
+        if (!endedRef.current) { endedRef.current = true; setStatus("ended"); }
+      }
+    };
+
+    (async () => {
+      // check mic permission upfront (nice error)
+      try {
+        const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+        s.getTracks().forEach((t) => t.stop());
       } catch {
         toast.error("دسترسی به میکروفون داده نشد");
         navigate({ to: "/chats/$userId", params: { userId: peerId } });
         return;
       }
-      if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
-      localStreamRef.current = stream;
 
-      // 2) PeerConnection
-      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS, iceCandidatePoolSize: 10 });
-      pcRef.current = pc;
-      stream.getTracks().forEach((t) => pc.addTrack(t, stream));
-
-      pc.onicecandidate = (e) => { if (e.candidate) sendSignal("ice", e.candidate.toJSON()); };
-      pc.ontrack = (e) => {
-        if (remoteAudioRef.current) {
-          remoteAudioRef.current.srcObject = e.streams[0];
-          remoteAudioRef.current.play().catch(() => {});
-        }
-      };
-      pc.onconnectionstatechange = () => {
-        if (pc.connectionState === "connected") setStatus("connected");
-        else if (pc.connectionState === "failed" || pc.connectionState === "closed") setStatus("ended");
-      };
-      pc.oniceconnectionstatechange = () => {
-        if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") setStatus("connected");
-        if (pc.iceConnectionState === "failed") setStatus("ended");
-      };
-
-      const addQueuedIce = async () => {
-        if (!pc.remoteDescription) return;
-        const queued = [...iceQueueRef.current];
-        iceQueueRef.current = [];
-        for (const candidate of queued) {
-          try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); }
-          catch (err) { console.warn("queued ice failed", err); }
-        }
-      };
-
-      const processSignal = async (sig: CallSignalRow) => {
-        const key = sig.id || `${sig.kind}-${sig.from_user}-${sig.created_at || ""}`;
-        if (processedSignalsRef.current.has(key)) return;
-        processedSignalsRef.current.add(key);
-        if (sig.from_user === me) return;
-        try {
-          if (sig.kind === "offer" && !isCallerRef.current) {
-            if (!pc.remoteDescription) {
-              await pc.setRemoteDescription(new RTCSessionDescription(sig.payload as RTCSessionDescriptionInit));
-              await addQueuedIce();
-              const answer = await pc.createAnswer();
-              await pc.setLocalDescription(answer);
-              await sendSignal("answer", answer);
-            }
-          } else if (sig.kind === "answer" && isCallerRef.current) {
-            if (!pc.remoteDescription) {
-              await pc.setRemoteDescription(new RTCSessionDescription(sig.payload as RTCSessionDescriptionInit));
-              await addQueuedIce();
-            }
-          } else if (sig.kind === "ice") {
-            const candidate = sig.payload as RTCIceCandidateInit;
-            if (pc.remoteDescription) await pc.addIceCandidate(new RTCIceCandidate(candidate));
-            else iceQueueRef.current.push(candidate);
-          } else if (sig.kind === "hangup" || sig.kind === "reject") {
-            setStatus("ended");
-          }
-        } catch (e) { console.error("signal err", e); }
-      };
-
-      const drainExistingSignals = async () => {
-        const { data: existing } = await supabase
-          .from("call_signals")
-          .select("id, kind, from_user, payload, created_at")
-          .eq("call_id", callIdRef.current)
-          .order("created_at", { ascending: true })
-          .limit(200);
-        for (const sig of (existing || []) as CallSignalRow[]) await processSignal(sig);
-      };
-
-      // 3) Signaling channel
-      let started = false;
+      // set up signaling channel for offer/answer/hangup
       const ch = supabase
         .channel(`call-${callIdRef.current}-${me}`)
         .on(
           "postgres_changes",
           { event: "INSERT", schema: "public", table: "call_signals", filter: `call_id=eq.${callIdRef.current}` },
-          (payload) => processSignal(payload.new as CallSignalRow)
+          (payload) => {
+            const sig = payload.new as { kind: string; from_user: string };
+            if (sig.from_user === me) return;
+            if (sig.kind === "answer" && isCallerRef.current) {
+              setStatus((s) => s === "calling" ? "ringing" : s);
+            } else if (sig.kind === "hangup" || sig.kind === "reject") {
+              if (!endedRef.current) { endedRef.current = true; setStatus("ended"); }
+            }
+          }
         )
         .subscribe(async (subStatus) => {
-          if (subStatus !== "SUBSCRIBED" || started || cancelled) return;
-          started = true;
+          if (subStatus !== "SUBSCRIBED" || cancelled) return;
           if (isCallerRef.current) {
             setStatus("calling");
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            await sendSignal("offer", offer);
+            await sendSignal("offer", { channel: callIdRef.current });
           } else {
             setStatus("ringing");
-            await drainExistingSignals();
+            await sendSignal("answer", { channel: callIdRef.current });
           }
-          drainTimerRef.current = setInterval(() => {
-            if (pc.connectionState !== "connected" && pc.connectionState !== "closed") drainExistingSignals();
-          }, 1500);
+          await joinAgora();
         });
       channelRef.current = ch;
-      const stopDrain = () => {
-        if (drainTimerRef.current) clearInterval(drainTimerRef.current);
-        drainTimerRef.current = null;
-      };
-      pc.addEventListener("connectionstatechange", () => { if (pc.connectionState === "connected") stopDrain(); });
     })();
 
     return () => {
       cancelled = true;
-      try { pcRef.current?.getSenders().forEach((s) => s.track?.stop()); } catch { /* noop */ }
-      if (drainTimerRef.current) clearInterval(drainTimerRef.current);
-      drainTimerRef.current = null;
-      pcRef.current?.close();
-      localStreamRef.current?.getTracks().forEach((t) => t.stop());
-      if (channelRef.current) supabase.removeChannel(channelRef.current);
-      sendSignal("hangup", {}).catch(() => {});
+      (async () => {
+        try {
+          if (micRef.current) {
+            micRef.current.stop();
+            micRef.current.close();
+            micRef.current = null;
+          }
+          if (clientRef.current) {
+            await clientRef.current.leave();
+            clientRef.current.removeAllListeners();
+            clientRef.current = null;
+          }
+        } catch { /* noop */ }
+        if (channelRef.current) supabase.removeChannel(channelRef.current);
+        try { await sendSignal("hangup"); } catch { /* noop */ }
+      })();
     };
-  }, [me, peerId, navigate]);
+  }, [me, peerId, navigate, fetchToken]);
 
   const toggleMute = () => {
-    const tracks = localStreamRef.current?.getAudioTracks() || [];
     const next = !muted;
-    tracks.forEach((t) => (t.enabled = !next));
+    micRef.current?.setEnabled(!next);
     setMuted(next);
   };
 
   const hangup = () => {
+    endedRef.current = true;
     setStatus("ended");
     setTimeout(() => navigate({ to: "/chats/$userId", params: { userId: peerId } }), 300);
   };
@@ -216,7 +190,6 @@ function CallView() {
       </header>
 
       <main className="flex-1 flex flex-col items-center justify-center gap-6 px-6">
-        <audio ref={remoteAudioRef} autoPlay />
         <div className="relative">
           <div className="absolute inset-0 rounded-full bg-primary/30 animate-ping" style={{ animationDuration: status === "connected" ? "0s" : "2s" }} />
           <UserAvatar avatarPath={peer?.avatar_url ?? null} name={peer?.display_name || peer?.username || "..."} className="w-32 h-32 relative" />
