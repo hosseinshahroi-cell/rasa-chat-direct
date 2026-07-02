@@ -23,7 +23,8 @@ export function installQueryPersister(queryClient: QueryClient) {
     throttleTime: 800,
   });
   persistQueryClient({
-    queryClient,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    queryClient: queryClient as any,
     persister,
     maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
     dehydrateOptions: {
