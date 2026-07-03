@@ -6,7 +6,7 @@ import {
 import { useEffect, type ReactNode } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { installQueryPersister } from "@/lib/cache";
+import { installQueryPersister, setCachedUserId } from "@/lib/cache";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
