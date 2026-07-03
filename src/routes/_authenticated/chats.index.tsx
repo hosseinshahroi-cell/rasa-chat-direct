@@ -81,7 +81,7 @@ function ChatsList() {
     return () => clearInterval(t);
   }, [userId]);
 
-  const { data: chats = [] } = useQuery<ChatItem[]>({
+  const { data: chats = [], isLoading: chatsLoading, isFetching: chatsFetching } = useQuery<ChatItem[]>({
     queryKey: ["chats", userId],
     enabled: !!userId,
     refetchInterval: 30000,
