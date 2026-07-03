@@ -58,14 +58,17 @@ interface StoryItem {
 function ChatsList() {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const [userId, setUserId] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(() => getCachedUserId());
+  const [authReady, setAuthReady] = useState<boolean>(() => !!getCachedUserId());
   const [isAdmin, setIsAdmin] = useState(false);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
-      if (!data.user) return;
+      setAuthReady(true);
+      if (!data.user) { setCachedUserId(null); setUserId(null); return; }
       setUserId(data.user.id);
+      setCachedUserId(data.user.id);
       const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", data.user.id);
       setIsAdmin(!!roles?.some((r) => r.role === "admin"));
     });
