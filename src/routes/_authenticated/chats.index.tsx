@@ -245,16 +245,22 @@ function ChatsList() {
           </Link>
         )}
         {chats.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center px-4">
-            <div className="w-20 h-20 rounded-3xl bg-primary/10 flex items-center justify-center mb-4">
-              <MessageCircle className="w-10 h-10 text-primary" />
+          (!authReady || chatsLoading || chatsFetching) ? (
+            <div className="flex flex-col items-center justify-center py-20">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
             </div>
-            <h2 className="text-lg font-semibold mb-1">هنوز گفتگویی نداری</h2>
-            <p className="text-sm text-muted-foreground mb-4">یک گفتگوی جدید شروع کن</p>
-            <Link to="/new-chat">
-              <Button><MessageCirclePlus className="w-4 h-4 ml-2" /> شروع گفتگو</Button>
-            </Link>
-          </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-20 text-center px-4">
+              <div className="w-20 h-20 rounded-3xl bg-primary/10 flex items-center justify-center mb-4">
+                <MessageCircle className="w-10 h-10 text-primary" />
+              </div>
+              <h2 className="text-lg font-semibold mb-1">هنوز گفتگویی نداری</h2>
+              <p className="text-sm text-muted-foreground mb-4">یک گفتگوی جدید شروع کن</p>
+              <Link to="/new-chat">
+                <Button><MessageCirclePlus className="w-4 h-4 ml-2" /> شروع گفتگو</Button>
+              </Link>
+            </div>
+          )
         ) : (
           <ul className="divide-y">
             {chats.map((c) => (
