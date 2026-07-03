@@ -9,6 +9,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { MessageCirclePlus, Settings, Shield, MessageCircle, Bookmark, BadgeCheck, Users, Search, Radio, Plus, Eye, Loader2, X, Trash2 } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { formatRelativeTime } from "@/lib/format";
+import { getCachedUserId, setCachedUserId } from "@/lib/cache";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/chats/")({
@@ -57,14 +58,17 @@ interface StoryItem {
 function ChatsList() {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const [userId, setUserId] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(() => getCachedUserId());
+  const [authReady, setAuthReady] = useState<boolean>(() => !!getCachedUserId());
   const [isAdmin, setIsAdmin] = useState(false);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
-      if (!data.user) return;
+      setAuthReady(true);
+      if (!data.user) { setCachedUserId(null); setUserId(null); return; }
       setUserId(data.user.id);
+      setCachedUserId(data.user.id);
       const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", data.user.id);
       setIsAdmin(!!roles?.some((r) => r.role === "admin"));
     });
@@ -77,7 +81,7 @@ function ChatsList() {
     return () => clearInterval(t);
   }, [userId]);
 
-  const { data: chats = [] } = useQuery<ChatItem[]>({
+  const { data: chats = [], isLoading: chatsLoading, isFetching: chatsFetching } = useQuery<ChatItem[]>({
     queryKey: ["chats", userId],
     enabled: !!userId,
     refetchInterval: 30000,
@@ -241,16 +245,22 @@ function ChatsList() {
           </Link>
         )}
         {chats.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center px-4">
-            <div className="w-20 h-20 rounded-3xl bg-primary/10 flex items-center justify-center mb-4">
-              <MessageCircle className="w-10 h-10 text-primary" />
+          (!authReady || chatsLoading || chatsFetching) ? (
+            <div className="flex flex-col items-center justify-center py-20">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
             </div>
-            <h2 className="text-lg font-semibold mb-1">هنوز گفتگویی نداری</h2>
-            <p className="text-sm text-muted-foreground mb-4">یک گفتگوی جدید شروع کن</p>
-            <Link to="/new-chat">
-              <Button><MessageCirclePlus className="w-4 h-4 ml-2" /> شروع گفتگو</Button>
-            </Link>
-          </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-20 text-center px-4">
+              <div className="w-20 h-20 rounded-3xl bg-primary/10 flex items-center justify-center mb-4">
+                <MessageCircle className="w-10 h-10 text-primary" />
+              </div>
+              <h2 className="text-lg font-semibold mb-1">هنوز گفتگویی نداری</h2>
+              <p className="text-sm text-muted-foreground mb-4">یک گفتگوی جدید شروع کن</p>
+              <Link to="/new-chat">
+                <Button><MessageCirclePlus className="w-4 h-4 ml-2" /> شروع گفتگو</Button>
+              </Link>
+            </div>
+          )
         ) : (
           <ul className="divide-y">
             {chats.map((c) => (

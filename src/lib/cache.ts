@@ -5,6 +5,21 @@ import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persi
 
 let installed = false;
 
+const UID_KEY = "rasa-uid";
+
+export function getCachedUserId(): string | null {
+  if (typeof window === "undefined") return null;
+  try { return window.localStorage.getItem(UID_KEY); } catch { return null; }
+}
+
+export function setCachedUserId(id: string | null) {
+  if (typeof window === "undefined") return;
+  try {
+    if (id) window.localStorage.setItem(UID_KEY, id);
+    else window.localStorage.removeItem(UID_KEY);
+  } catch { /* ignore */ }
+}
+
 export function installQueryPersister(queryClient: QueryClient) {
   if (installed || typeof window === "undefined") return;
   installed = true;
@@ -26,11 +41,10 @@ export function installQueryPersister(queryClient: QueryClient) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     queryClient: queryClient as any,
     persister,
-    maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
+    maxAge: 1000 * 60 * 60 * 24 * 7,
     dehydrateOptions: {
       shouldDehydrateQuery: (q) => {
         const k = q.queryKey?.[0];
-        // persist chats list, messages, profiles, groups, stories
         return (
           k === "chats" ||
           k === "messages" ||
@@ -43,3 +57,4 @@ export function installQueryPersister(queryClient: QueryClient) {
     },
   });
 }
+
