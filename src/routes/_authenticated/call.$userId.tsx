@@ -58,7 +58,7 @@ function CallView() {
 
   useEffect(() => {
     if (status !== "connected") return;
-    const t = setInterval(() => setSeconds((s) => s + 1), 1000);
+    const t = setInterval(() => setSeconds((s) => { const n = s + 1; secondsRef.current = n; return n; }), 1000);
     return () => clearInterval(t);
   }, [status]);
 
