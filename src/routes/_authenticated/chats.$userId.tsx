@@ -53,6 +53,7 @@ interface Message {
 
 function ChatView() {
   const { userId: otherId } = Route.useParams();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const [me, setMe] = useState<string | null>(null);
   const [text, setText] = useState("");
