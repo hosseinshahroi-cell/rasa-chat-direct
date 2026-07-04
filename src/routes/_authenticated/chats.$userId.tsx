@@ -396,6 +396,15 @@ function ChatView() {
     else if (text.trim()) sendMessage(text.trim());
   };
 
+  const blockUser = async () => {
+    if (!me || isSelf) return;
+    const { error } = await supabase.from("user_blocks").insert({ blocker_id: me, blocked_id: otherId });
+    if (error && !error.message.includes("duplicate")) { toast.error(error.message); return; }
+    toast.success("کاربر مسدود شد");
+    qc.invalidateQueries({ queryKey: ["chats"] });
+    navigate({ to: "/chats" });
+  };
+
   return (
     <div className="flex flex-col h-screen bg-background">
       <header className="sticky top-0 z-10 bg-card/95 backdrop-blur border-b">
