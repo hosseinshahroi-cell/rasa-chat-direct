@@ -48,6 +48,7 @@ function CallView() {
   const callIdRef = useRef<string>(incoming || crypto.randomUUID());
   const isCallerRef = useRef<boolean>(!incoming);
   const endedRef = useRef(false);
+  const secondsRef = useRef(0);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setMe(data.user?.id ?? null));
