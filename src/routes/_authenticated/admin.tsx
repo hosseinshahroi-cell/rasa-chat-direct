@@ -316,7 +316,8 @@ function AdminPage() {
             <RatingsChart />
           </TabsContent>
 
-          <TabsContent value="controls" className="mt-3">
+          <TabsContent value="controls" className="mt-3 space-y-3">
+            <BrandingCard />
             <Card className="p-4 space-y-3">
               <div className="flex items-center gap-2">
                 <Lock className="w-4 h-4 text-primary" />
