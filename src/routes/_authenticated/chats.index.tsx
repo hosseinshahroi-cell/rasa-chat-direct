@@ -62,6 +62,7 @@ function ChatsList() {
   const [authReady, setAuthReady] = useState<boolean>(() => !!getCachedUserId());
   const [isAdmin, setIsAdmin] = useState(false);
   const [search, setSearch] = useState("");
+  const { data: branding } = useBranding();
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
