@@ -72,6 +72,13 @@ function CallView() {
       });
     };
 
+    const sendSystemMessage = async (content: string) => {
+      if (!isCallerRef.current || !me) return;
+      await supabase.from("messages").insert({
+        sender_id: me, receiver_id: peerId, content,
+      });
+    };
+
     const joinAgora = async () => {
       if (cancelled) return;
       try {
@@ -93,10 +100,14 @@ function CallView() {
           if (cur === "DISCONNECTED" && !endedRef.current) { endedRef.current = true; setStatus("ended"); }
         });
         await client.join(appId, channel, token, uid);
-        const mic = await AgoraRTC.createMicrophoneAudioTrack({ AEC: true, ANS: true, AGC: true });
+        const mic = await AgoraRTC.createMicrophoneAudioTrack({
+          encoderConfig: "music_standard",
+          AEC: true,
+          ANS: true,
+          AGC: true,
+        });
         micRef.current = mic;
         await client.publish([mic]);
-        // if remote user already there, mark connected
         if (client.remoteUsers.length > 0) setStatus("connected");
       } catch (err) {
         console.error("agora join error", err);
