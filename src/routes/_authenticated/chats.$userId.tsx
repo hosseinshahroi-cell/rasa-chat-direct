@@ -455,9 +455,12 @@ function ChatView() {
                 <PopoverTrigger asChild>
                   <Button size="icon" variant="ghost"><MoreVertical className="w-5 h-5" /></Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-44 p-1" align="end">
-                  <button onClick={() => setReportOpen(true)} className="w-full text-right flex items-center gap-2 px-3 py-2 rounded hover:bg-accent text-sm text-destructive">
+                <PopoverContent className="w-48 p-1" align="end">
+                  <button onClick={() => setReportOpen(true)} className="w-full text-right flex items-center gap-2 px-3 py-2 rounded hover:bg-accent text-sm">
                     <Flag className="w-4 h-4" /> گزارش کاربر
+                  </button>
+                  <button onClick={blockUser} className="w-full text-right flex items-center gap-2 px-3 py-2 rounded hover:bg-accent text-sm text-destructive">
+                    <ShieldAlert className="w-4 h-4" /> مسدود کردن کاربر
                   </button>
                 </PopoverContent>
               </Popover>
