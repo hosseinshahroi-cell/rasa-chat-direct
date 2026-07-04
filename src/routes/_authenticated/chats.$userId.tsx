@@ -714,18 +714,32 @@ function MessageBubble({
               </div>
             )}
             {m.attachment_type === "image" && signed && (
-              <img
-                src={signed} alt=""
-                onClick={(e) => { e.stopPropagation(); onImageClick(signed); }}
-                className="rounded-lg max-h-64 mb-1 cursor-zoom-in"
-              />
+              <div className="relative mb-1 group/img">
+                <img
+                  src={signed} alt=""
+                  onClick={(e) => { e.stopPropagation(); onImageClick(signed); }}
+                  className="rounded-lg max-h-64 cursor-zoom-in"
+                />
+                <a
+                  href={signed} download target="_blank" rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute top-1.5 left-1.5 bg-black/55 hover:bg-black/75 text-white rounded-full p-1.5 transition"
+                  title="دانلود"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                </a>
+              </div>
             )}
             {m.attachment_type === "audio" && signed && (
               <VoicePlayer src={signed} mine={mine} />
             )}
             {m.attachment_type === "file" && signed && (
-              <a href={signed} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="underline flex items-center gap-2">
-                <Paperclip className="w-4 h-4" /> دانلود فایل
+              <a
+                href={signed} download target="_blank" rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="underline flex items-center gap-2"
+              >
+                <Download className="w-4 h-4" /> دانلود فایل
               </a>
             )}
             {m.content && <MessageText text={m.content} mine={mine} />}
