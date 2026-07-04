@@ -7,7 +7,7 @@ import { UserAvatar } from "@/components/UserAvatar";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { MessageCirclePlus, Settings, Shield, MessageCircle, Bookmark, BadgeCheck, Users, Search, Radio, Plus, Eye, Loader2, X, Trash2 } from "lucide-react";
-import { Logo } from "@/components/Logo";
+import { Logo, useBranding } from "@/components/Logo";
 import { formatRelativeTime } from "@/lib/format";
 import { getCachedUserId, setCachedUserId } from "@/lib/cache";
 import { toast } from "sonner";
@@ -62,6 +62,7 @@ function ChatsList() {
   const [authReady, setAuthReady] = useState<boolean>(() => !!getCachedUserId());
   const [isAdmin, setIsAdmin] = useState(false);
   const [search, setSearch] = useState("");
+  const { data: branding } = useBranding();
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
@@ -184,7 +185,7 @@ function ChatsList() {
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Logo size={36} />
-            <h1 className="text-xl font-bold">رسا</h1>
+            <h1 className="text-xl font-bold">{branding?.app_name || "رسا"}</h1>
           </div>
           <div className="flex items-center gap-1">
             {isAdmin && (

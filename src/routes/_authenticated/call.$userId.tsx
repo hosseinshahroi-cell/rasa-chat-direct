@@ -48,6 +48,7 @@ function CallView() {
   const callIdRef = useRef<string>(incoming || crypto.randomUUID());
   const isCallerRef = useRef<boolean>(!incoming);
   const endedRef = useRef(false);
+  const secondsRef = useRef(0);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setMe(data.user?.id ?? null));
@@ -57,7 +58,7 @@ function CallView() {
 
   useEffect(() => {
     if (status !== "connected") return;
-    const t = setInterval(() => setSeconds((s) => s + 1), 1000);
+    const t = setInterval(() => setSeconds((s) => { const n = s + 1; secondsRef.current = n; return n; }), 1000);
     return () => clearInterval(t);
   }, [status]);
 
@@ -69,6 +70,13 @@ function CallView() {
       await supabase.from("call_signals").insert({
         from_user: me, to_user: peerId, call_id: callIdRef.current, kind,
         payload: payload as never,
+      });
+    };
+
+    const sendSystemMessage = async (content: string) => {
+      if (!isCallerRef.current || !me) return;
+      await supabase.from("messages").insert({
+        sender_id: me, receiver_id: peerId, content,
       });
     };
 
@@ -93,10 +101,14 @@ function CallView() {
           if (cur === "DISCONNECTED" && !endedRef.current) { endedRef.current = true; setStatus("ended"); }
         });
         await client.join(appId, channel, token, uid);
-        const mic = await AgoraRTC.createMicrophoneAudioTrack({ AEC: true, ANS: true, AGC: true });
+        const mic = await AgoraRTC.createMicrophoneAudioTrack({
+          encoderConfig: "music_standard",
+          AEC: true,
+          ANS: true,
+          AGC: true,
+        });
         micRef.current = mic;
         await client.publish([mic]);
-        // if remote user already there, mark connected
         if (client.remoteUsers.length > 0) setStatus("connected");
       } catch (err) {
         console.error("agora join error", err);
@@ -137,6 +149,7 @@ function CallView() {
           if (isCallerRef.current) {
             setStatus("calling");
             await sendSignal("offer", { channel: callIdRef.current });
+            await sendSystemMessage("📞 تماس صوتی شروع شد");
           } else {
             setStatus("ringing");
             await sendSignal("answer", { channel: callIdRef.current });
@@ -148,6 +161,7 @@ function CallView() {
 
     return () => {
       cancelled = true;
+      const durationSec = secondsRef.current;
       (async () => {
         try {
           if (micRef.current) {
@@ -163,6 +177,14 @@ function CallView() {
         } catch { /* noop */ }
         if (channelRef.current) supabase.removeChannel(channelRef.current);
         try { await sendSignal("hangup"); } catch { /* noop */ }
+        if (isCallerRef.current) {
+          const m = Math.floor(durationSec / 60);
+          const s = durationSec % 60;
+          const label = durationSec > 0
+            ? `📞 تماس صوتی پایان یافت • مدت ${m}:${String(s).padStart(2, "0")}`
+            : "📞 تماس صوتی بدون پاسخ";
+          try { await sendSystemMessage(label); } catch { /* noop */ }
+        }
       })();
     };
   }, [me, peerId, navigate, fetchToken]);

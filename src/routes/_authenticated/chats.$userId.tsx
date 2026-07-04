@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -53,6 +53,7 @@ interface Message {
 
 function ChatView() {
   const { userId: otherId } = Route.useParams();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const [me, setMe] = useState<string | null>(null);
   const [text, setText] = useState("");
@@ -395,6 +396,15 @@ function ChatView() {
     else if (text.trim()) sendMessage(text.trim());
   };
 
+  const blockUser = async () => {
+    if (!me || isSelf) return;
+    const { error } = await supabase.from("user_blocks").insert({ blocker_id: me, blocked_id: otherId });
+    if (error && !error.message.includes("duplicate")) { toast.error(error.message); return; }
+    toast.success("کاربر مسدود شد");
+    qc.invalidateQueries({ queryKey: ["chats"] });
+    navigate({ to: "/chats" });
+  };
+
   return (
     <div className="flex flex-col h-screen bg-background">
       <header className="sticky top-0 z-10 bg-card/95 backdrop-blur border-b">
@@ -455,9 +465,12 @@ function ChatView() {
                 <PopoverTrigger asChild>
                   <Button size="icon" variant="ghost"><MoreVertical className="w-5 h-5" /></Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-44 p-1" align="end">
-                  <button onClick={() => setReportOpen(true)} className="w-full text-right flex items-center gap-2 px-3 py-2 rounded hover:bg-accent text-sm text-destructive">
+                <PopoverContent className="w-48 p-1" align="end">
+                  <button onClick={() => setReportOpen(true)} className="w-full text-right flex items-center gap-2 px-3 py-2 rounded hover:bg-accent text-sm">
                     <Flag className="w-4 h-4" /> گزارش کاربر
+                  </button>
+                  <button onClick={blockUser} className="w-full text-right flex items-center gap-2 px-3 py-2 rounded hover:bg-accent text-sm text-destructive">
+                    <ShieldAlert className="w-4 h-4" /> مسدود کردن کاربر
                   </button>
                 </PopoverContent>
               </Popover>
@@ -701,18 +714,32 @@ function MessageBubble({
               </div>
             )}
             {m.attachment_type === "image" && signed && (
-              <img
-                src={signed} alt=""
-                onClick={(e) => { e.stopPropagation(); onImageClick(signed); }}
-                className="rounded-lg max-h-64 mb-1 cursor-zoom-in"
-              />
+              <div className="relative mb-1 group/img">
+                <img
+                  src={signed} alt=""
+                  onClick={(e) => { e.stopPropagation(); onImageClick(signed); }}
+                  className="rounded-lg max-h-64 cursor-zoom-in"
+                />
+                <a
+                  href={signed} download target="_blank" rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute top-1.5 left-1.5 bg-black/55 hover:bg-black/75 text-white rounded-full p-1.5 transition"
+                  title="دانلود"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                </a>
+              </div>
             )}
             {m.attachment_type === "audio" && signed && (
               <VoicePlayer src={signed} mine={mine} />
             )}
             {m.attachment_type === "file" && signed && (
-              <a href={signed} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="underline flex items-center gap-2">
-                <Paperclip className="w-4 h-4" /> دانلود فایل
+              <a
+                href={signed} download target="_blank" rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="underline flex items-center gap-2"
+              >
+                <Download className="w-4 h-4" /> دانلود فایل
               </a>
             )}
             {m.content && <MessageText text={m.content} mine={mine} />}

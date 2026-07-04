@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -316,7 +316,8 @@ function AdminPage() {
             <RatingsChart />
           </TabsContent>
 
-          <TabsContent value="controls" className="mt-3">
+          <TabsContent value="controls" className="mt-3 space-y-3">
+            <BrandingCard />
             <Card className="p-4 space-y-3">
               <div className="flex items-center gap-2">
                 <Lock className="w-4 h-4 text-primary" />
@@ -576,6 +577,104 @@ function RatingsChart() {
           </ul>
         </div>
       )}
+    </Card>
+  );
+}
+
+function BrandingCard() {
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ["app-settings", "branding"],
+    queryFn: async () => {
+      const { data } = await supabase.from("app_settings").select("value").eq("key", "branding").maybeSingle();
+      return (data?.value as { app_name?: string; logo_url?: string } | null) || null;
+    },
+  });
+  const [appName, setAppName] = useState("");
+  const [logoUrl, setLogoUrl] = useState("");
+  const [saving, setSaving] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  useEffect(() => {
+    setAppName(data?.app_name || "");
+    setLogoUrl(data?.logo_url || "");
+  }, [data]);
+
+  const uploadLogo = async (file: File) => {
+    setUploading(true);
+    try {
+      const { data: userRes } = await supabase.auth.getUser();
+      const uid = userRes.user?.id;
+      if (!uid) return;
+      const ext = file.name.split(".").pop() || "png";
+      const path = `${uid}/branding-logo-${Date.now()}.${ext}`;
+      const { error } = await supabase.storage.from("chat-attachments").upload(path, file, { upsert: true });
+      if (error) throw error;
+      const { data: signed } = await supabase.storage.from("chat-attachments").createSignedUrl(path, 60 * 60 * 24 * 365 * 10);
+      if (signed?.signedUrl) setLogoUrl(signed.signedUrl);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "خطا در آپلود لوگو");
+    } finally { setUploading(false); }
+  };
+
+  const save = async () => {
+    setSaving(true);
+    const { error } = await supabase.from("app_settings").upsert({
+      key: "branding",
+      value: { app_name: appName.trim() || "رسا", logo_url: logoUrl.trim() },
+    });
+    setSaving(false);
+    if (error) toast.error(error.message);
+    else { toast.success("برندینگ ذخیره شد"); qc.invalidateQueries({ queryKey: ["app-settings", "branding"] }); }
+  };
+
+  const reset = async () => {
+    setSaving(true);
+    const { error } = await supabase.from("app_settings").delete().eq("key", "branding");
+    setSaving(false);
+    if (error) toast.error(error.message);
+    else {
+      toast.success("به پیش‌فرض بازگشت");
+      setAppName(""); setLogoUrl("");
+      qc.invalidateQueries({ queryKey: ["app-settings", "branding"] });
+    }
+  };
+
+  return (
+    <Card className="p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <Settings2 className="w-4 h-4 text-primary" />
+        <h3 className="font-semibold text-sm">برندینگ سایت (لوگو و نام)</h3>
+      </div>
+      <div className="flex items-center gap-3">
+        {logoUrl ? (
+          <img src={logoUrl} alt="logo preview" className="w-14 h-14 rounded-xl object-cover border" />
+        ) : (
+          <div className="w-14 h-14 rounded-xl bg-muted flex items-center justify-center text-xs text-muted-foreground">لوگو</div>
+        )}
+        <div className="flex-1 space-y-2">
+          <div>
+            <label className="text-xs text-muted-foreground">نام سایت</label>
+            <Input value={appName} onChange={(e) => setAppName(e.target.value)} placeholder="رسا" />
+          </div>
+        </div>
+      </div>
+      <div>
+        <label className="text-xs text-muted-foreground">آدرس لوگو (URL)</label>
+        <Input value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} placeholder="https://..." dir="ltr" />
+      </div>
+      <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => {
+        const f = e.target.files?.[0]; e.target.value = "";
+        if (f) uploadLogo(f);
+      }} />
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} disabled={uploading}>
+          {uploading ? "در حال آپلود..." : "آپلود لوگو"}
+        </Button>
+        <Button size="sm" onClick={save} disabled={saving}>ذخیره</Button>
+        <Button size="sm" variant="ghost" onClick={reset} disabled={saving}>بازگشت به پیش‌فرض</Button>
+      </div>
     </Card>
   );
 }
