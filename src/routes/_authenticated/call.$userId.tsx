@@ -148,6 +148,7 @@ function CallView() {
           if (isCallerRef.current) {
             setStatus("calling");
             await sendSignal("offer", { channel: callIdRef.current });
+            await sendSystemMessage("📞 تماس صوتی شروع شد");
           } else {
             setStatus("ringing");
             await sendSignal("answer", { channel: callIdRef.current });
@@ -159,6 +160,7 @@ function CallView() {
 
     return () => {
       cancelled = true;
+      const durationSec = secondsRef.current;
       (async () => {
         try {
           if (micRef.current) {
@@ -174,6 +176,14 @@ function CallView() {
         } catch { /* noop */ }
         if (channelRef.current) supabase.removeChannel(channelRef.current);
         try { await sendSignal("hangup"); } catch { /* noop */ }
+        if (isCallerRef.current) {
+          const m = Math.floor(durationSec / 60);
+          const s = durationSec % 60;
+          const label = durationSec > 0
+            ? `📞 تماس صوتی پایان یافت • مدت ${m}:${String(s).padStart(2, "0")}`
+            : "📞 تماس صوتی بدون پاسخ";
+          try { await sendSystemMessage(label); } catch { /* noop */ }
+        }
       })();
     };
   }, [me, peerId, navigate, fetchToken]);
