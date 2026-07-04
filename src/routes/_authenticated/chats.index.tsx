@@ -185,7 +185,7 @@ function ChatsList() {
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Logo size={36} />
-            <h1 className="text-xl font-bold">رسا</h1>
+            <h1 className="text-xl font-bold">{branding?.app_name || "رسا"}</h1>
           </div>
           <div className="flex items-center gap-1">
             {isAdmin && (
