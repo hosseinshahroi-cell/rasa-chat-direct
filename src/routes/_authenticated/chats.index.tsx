@@ -7,7 +7,7 @@ import { UserAvatar } from "@/components/UserAvatar";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { MessageCirclePlus, Settings, Shield, MessageCircle, Bookmark, BadgeCheck, Users, Search, Radio, Plus, Eye, Loader2, X, Trash2 } from "lucide-react";
-import { Logo } from "@/components/Logo";
+import { Logo, useBranding } from "@/components/Logo";
 import { formatRelativeTime } from "@/lib/format";
 import { getCachedUserId, setCachedUserId } from "@/lib/cache";
 import { toast } from "sonner";
