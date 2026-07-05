@@ -112,7 +112,8 @@ function CallView() {
         if (client.remoteUsers.length > 0) setStatus("connected");
       } catch (err) {
         console.error("agora join error", err);
-        toast.error("خطا در برقراری تماس صوتی");
+        const msg = err instanceof Error ? err.message : String(err);
+        toast.error(`خطا در تماس صوتی: ${msg}`);
         if (!endedRef.current) { endedRef.current = true; setStatus("ended"); }
       }
     };
