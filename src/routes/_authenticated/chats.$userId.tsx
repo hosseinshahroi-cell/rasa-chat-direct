@@ -293,7 +293,9 @@ function ChatView() {
       qc.invalidateQueries({ queryKey: ["chats"] });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "خطا در ارسال";
-      toast.error(msg.includes("suspended") ? "حساب شما تعلیق شده است" : msg);
+      if (msg.includes("مسدود")) toast.error("شما توسط این کاربر مسدود شده‌اید");
+      else if (msg.includes("suspended")) toast.error("حساب شما تعلیق شده است");
+      else toast.error(msg);
     } finally {
       setSending(false);
     }
