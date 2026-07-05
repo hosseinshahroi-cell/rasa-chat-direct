@@ -396,13 +396,37 @@ function ChatView() {
     else if (text.trim()) sendMessage(text.trim());
   };
 
+  const { data: blockRows = [] } = useQuery<{ blocker_id: string; blocked_id: string }[]>({
+    queryKey: ["blocks", me, otherId],
+    enabled: !!me && !isSelf,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("user_blocks")
+        .select("blocker_id, blocked_id")
+        .or(`and(blocker_id.eq.${me},blocked_id.eq.${otherId}),and(blocker_id.eq.${otherId},blocked_id.eq.${me})`);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+  const iBlockedThem = blockRows.some((b) => b.blocker_id === me);
+  const theyBlockedMe = blockRows.some((b) => b.blocker_id === otherId);
+  const blocked = iBlockedThem || theyBlockedMe;
+
   const blockUser = async () => {
     if (!me || isSelf) return;
     const { error } = await supabase.from("user_blocks").insert({ blocker_id: me, blocked_id: otherId });
     if (error && !error.message.includes("duplicate")) { toast.error(error.message); return; }
     toast.success("کاربر مسدود شد");
+    qc.invalidateQueries({ queryKey: ["blocks", me, otherId] });
     qc.invalidateQueries({ queryKey: ["chats"] });
-    navigate({ to: "/chats" });
+  };
+
+  const unblockUser = async () => {
+    if (!me) return;
+    const { error } = await supabase.from("user_blocks").delete().eq("blocker_id", me).eq("blocked_id", otherId);
+    if (error) { toast.error(error.message); return; }
+    toast.success("رفع مسدودی انجام شد");
+    qc.invalidateQueries({ queryKey: ["blocks", me, otherId] });
   };
 
   return (
