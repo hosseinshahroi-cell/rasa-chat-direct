@@ -775,15 +775,30 @@ function MessageBubble({
             {m.attachment_type === "audio" && signed && (
               <VoicePlayer src={signed} mine={mine} />
             )}
-            {m.attachment_type === "file" && signed && (
-              <a
-                href={signed} download target="_blank" rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="underline flex items-center gap-2"
-              >
-                <Download className="w-4 h-4" /> دانلود فایل
-              </a>
-            )}
+            {m.attachment_type === "file" && signed && (() => {
+              const url = m.attachment_url || "";
+              const isAudio = /\.(mp3|wav|ogg|m4a|aac|flac|opus)(\?|$)/i.test(url);
+              if (isAudio) {
+                const fname = decodeURIComponent(url.split("/").pop() || "آهنگ").replace(/^\d+-[a-z0-9]+\./i, "");
+                return (
+                  <div className={`rounded-xl p-2 mb-1 ${mine ? "bg-white/10" : "bg-primary/10"}`}>
+                    <p className={`text-xs mb-1 truncate flex items-center gap-1 ${mine ? "text-white/90" : "text-primary"}`}>
+                      🎵 <span className="truncate" dir="ltr">{fname}</span>
+                    </p>
+                    <VoicePlayer src={signed} mine={mine} />
+                  </div>
+                );
+              }
+              return (
+                <a
+                  href={signed} download target="_blank" rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="underline flex items-center gap-2"
+                >
+                  <Download className="w-4 h-4" /> دانلود فایل
+                </a>
+              );
+            })()}
             {m.content && <MessageText text={m.content} mine={mine} />}
             <div className={`text-[10px] mt-1 flex items-center gap-1 ${mine ? "opacity-80" : "text-muted-foreground"}`}>
               {m.is_pinned && <Pin className="w-3 h-3" />}
