@@ -18,6 +18,7 @@ import { Route as AuthenticatedNewChatRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as AuthenticatedChatsIndexRouteImport } from './routes/_authenticated/chats.index'
 import { Route as AuthenticatedUUsernameRouteImport } from './routes/_authenticated/u.$username'
+import { Route as AuthenticatedJoinTokenRouteImport } from './routes/_authenticated/join.$token'
 import { Route as AuthenticatedGroupGroupIdRouteImport } from './routes/_authenticated/group.$groupId'
 import { Route as AuthenticatedChatsUserIdRouteImport } from './routes/_authenticated/chats.$userId'
 import { Route as AuthenticatedCallUserIdRouteImport } from './routes/_authenticated/call.$userId'
@@ -66,6 +67,11 @@ const AuthenticatedUUsernameRoute = AuthenticatedUUsernameRouteImport.update({
   path: '/u/$username',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedJoinTokenRoute = AuthenticatedJoinTokenRouteImport.update({
+  id: '/join/$token',
+  path: '/join/$token',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedGroupGroupIdRoute =
   AuthenticatedGroupGroupIdRouteImport.update({
     id: '/group/$groupId',
@@ -94,6 +100,7 @@ export interface FileRoutesByFullPath {
   '/call/$userId': typeof AuthenticatedCallUserIdRoute
   '/chats/$userId': typeof AuthenticatedChatsUserIdRoute
   '/group/$groupId': typeof AuthenticatedGroupGroupIdRoute
+  '/join/$token': typeof AuthenticatedJoinTokenRoute
   '/u/$username': typeof AuthenticatedUUsernameRoute
   '/chats/': typeof AuthenticatedChatsIndexRoute
 }
@@ -107,6 +114,7 @@ export interface FileRoutesByTo {
   '/call/$userId': typeof AuthenticatedCallUserIdRoute
   '/chats/$userId': typeof AuthenticatedChatsUserIdRoute
   '/group/$groupId': typeof AuthenticatedGroupGroupIdRoute
+  '/join/$token': typeof AuthenticatedJoinTokenRoute
   '/u/$username': typeof AuthenticatedUUsernameRoute
   '/chats': typeof AuthenticatedChatsIndexRoute
 }
@@ -122,6 +130,7 @@ export interface FileRoutesById {
   '/_authenticated/call/$userId': typeof AuthenticatedCallUserIdRoute
   '/_authenticated/chats/$userId': typeof AuthenticatedChatsUserIdRoute
   '/_authenticated/group/$groupId': typeof AuthenticatedGroupGroupIdRoute
+  '/_authenticated/join/$token': typeof AuthenticatedJoinTokenRoute
   '/_authenticated/u/$username': typeof AuthenticatedUUsernameRoute
   '/_authenticated/chats/': typeof AuthenticatedChatsIndexRoute
 }
@@ -137,6 +146,7 @@ export interface FileRouteTypes {
     | '/call/$userId'
     | '/chats/$userId'
     | '/group/$groupId'
+    | '/join/$token'
     | '/u/$username'
     | '/chats/'
   fileRoutesByTo: FileRoutesByTo
@@ -150,6 +160,7 @@ export interface FileRouteTypes {
     | '/call/$userId'
     | '/chats/$userId'
     | '/group/$groupId'
+    | '/join/$token'
     | '/u/$username'
     | '/chats'
   id:
@@ -164,6 +175,7 @@ export interface FileRouteTypes {
     | '/_authenticated/call/$userId'
     | '/_authenticated/chats/$userId'
     | '/_authenticated/group/$groupId'
+    | '/_authenticated/join/$token'
     | '/_authenticated/u/$username'
     | '/_authenticated/chats/'
   fileRoutesById: FileRoutesById
@@ -240,6 +252,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedUUsernameRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/join/$token': {
+      id: '/_authenticated/join/$token'
+      path: '/join/$token'
+      fullPath: '/join/$token'
+      preLoaderRoute: typeof AuthenticatedJoinTokenRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/group/$groupId': {
       id: '/_authenticated/group/$groupId'
       path: '/group/$groupId'
@@ -271,6 +290,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedCallUserIdRoute: typeof AuthenticatedCallUserIdRoute
   AuthenticatedChatsUserIdRoute: typeof AuthenticatedChatsUserIdRoute
   AuthenticatedGroupGroupIdRoute: typeof AuthenticatedGroupGroupIdRoute
+  AuthenticatedJoinTokenRoute: typeof AuthenticatedJoinTokenRoute
   AuthenticatedUUsernameRoute: typeof AuthenticatedUUsernameRoute
   AuthenticatedChatsIndexRoute: typeof AuthenticatedChatsIndexRoute
 }
@@ -282,6 +302,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedCallUserIdRoute: AuthenticatedCallUserIdRoute,
   AuthenticatedChatsUserIdRoute: AuthenticatedChatsUserIdRoute,
   AuthenticatedGroupGroupIdRoute: AuthenticatedGroupGroupIdRoute,
+  AuthenticatedJoinTokenRoute: AuthenticatedJoinTokenRoute,
   AuthenticatedUUsernameRoute: AuthenticatedUUsernameRoute,
   AuthenticatedChatsIndexRoute: AuthenticatedChatsIndexRoute,
 }
