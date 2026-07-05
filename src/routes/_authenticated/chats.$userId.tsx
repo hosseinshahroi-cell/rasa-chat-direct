@@ -612,6 +612,44 @@ function ChatView() {
                 submitText();
               }
             }}
+      {blocked ? (
+        <div className="sticky bottom-0 bg-card/95 backdrop-blur border-t">
+          <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
+            <ShieldAlert className="w-5 h-5 text-destructive shrink-0" />
+            <p className="text-sm flex-1 text-muted-foreground">
+              {iBlockedThem
+                ? "شما این کاربر را مسدود کرده‌اید. برای ارسال پیام رفع مسدود بزنید."
+                : "شما توسط این کاربر مسدود شده‌اید."}
+            </p>
+            {iBlockedThem && (
+              <Button size="sm" variant="outline" onClick={unblockUser}>رفع مسدود</Button>
+            )}
+          </div>
+        </div>
+      ) : (
+      <div className="sticky bottom-0 bg-card/95 backdrop-blur border-t">
+        <div className="max-w-2xl mx-auto p-2 flex items-end gap-1.5">
+          {!editing && (
+            <>
+              <Button size="icon" variant="ghost" onClick={() => fileRef.current?.click()}>
+                <Paperclip className="w-5 h-5" />
+              </Button>
+              <Button size="icon" variant="ghost" onClick={() => imgRef.current?.click()}>
+                <ImageIcon className="w-5 h-5" />
+              </Button>
+              <input ref={fileRef} type="file" hidden onChange={(e) => onFile(e, "file")} />
+              <input ref={imgRef} type="file" accept="image/*" hidden onChange={(e) => onFile(e, "image")} />
+            </>
+          )}
+          <Input
+            value={text}
+            onChange={(e) => updateText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                submitText();
+              }
+            }}
              placeholder={recording ? "در حال ضبط صدا..." : editing ? "متن جدید..." : "پیام..."}
             className="flex-1"
           />
@@ -630,19 +668,7 @@ function ChatView() {
           )}
         </div>
       </div>
-
-      <Dialog open={!!imageView} onOpenChange={(o) => !o && setImageView(null)}>
-        <DialogContent className="max-w-3xl p-2 bg-black/95 border-0">
-          {imageView && (
-            <div className="flex flex-col items-center gap-3">
-              <img src={imageView.url} alt="" className="max-h-[80vh] w-auto rounded" />
-              <a href={imageView.url} download target="_blank" rel="noopener noreferrer">
-                <Button variant="secondary"><Download className="w-4 h-4 ml-2" /> دانلود</Button>
-              </a>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      )}
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
         <AlertDialogContent>
