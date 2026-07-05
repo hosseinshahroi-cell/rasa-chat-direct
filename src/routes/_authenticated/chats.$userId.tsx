@@ -589,29 +589,6 @@ function ChatView() {
         </div>
       )}
 
-      <div className="sticky bottom-0 bg-card/95 backdrop-blur border-t">
-        <div className="max-w-2xl mx-auto p-2 flex items-end gap-1.5">
-          {!editing && (
-            <>
-              <Button size="icon" variant="ghost" onClick={() => fileRef.current?.click()}>
-                <Paperclip className="w-5 h-5" />
-              </Button>
-              <Button size="icon" variant="ghost" onClick={() => imgRef.current?.click()}>
-                <ImageIcon className="w-5 h-5" />
-              </Button>
-              <input ref={fileRef} type="file" hidden onChange={(e) => onFile(e, "file")} />
-              <input ref={imgRef} type="file" accept="image/*" hidden onChange={(e) => onFile(e, "image")} />
-            </>
-          )}
-          <Input
-            value={text}
-            onChange={(e) => updateText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                submitText();
-              }
-            }}
       {blocked ? (
         <div className="sticky bottom-0 bg-card/95 backdrop-blur border-t">
           <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
