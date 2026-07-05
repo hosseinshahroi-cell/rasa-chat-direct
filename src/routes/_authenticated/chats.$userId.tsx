@@ -647,6 +647,19 @@ function ChatView() {
       </div>
       )}
 
+      <Dialog open={!!imageView} onOpenChange={(o) => !o && setImageView(null)}>
+        <DialogContent className="max-w-3xl p-2 bg-black/95 border-0">
+          {imageView && (
+            <div className="flex flex-col items-center gap-3">
+              <img src={imageView.url} alt="" className="max-h-[80vh] w-auto rounded" />
+              <a href={imageView.url} download target="_blank" rel="noopener noreferrer">
+                <Button variant="secondary"><Download className="w-4 h-4 ml-2" /> دانلود</Button>
+              </a>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
