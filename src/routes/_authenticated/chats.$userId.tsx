@@ -293,7 +293,9 @@ function ChatView() {
       qc.invalidateQueries({ queryKey: ["chats"] });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "خطا در ارسال";
-      toast.error(msg.includes("suspended") ? "حساب شما تعلیق شده است" : msg);
+      if (msg.includes("مسدود")) toast.error("شما توسط این کاربر مسدود شده‌اید");
+      else if (msg.includes("suspended")) toast.error("حساب شما تعلیق شده است");
+      else toast.error(msg);
     } finally {
       setSending(false);
     }
@@ -396,13 +398,37 @@ function ChatView() {
     else if (text.trim()) sendMessage(text.trim());
   };
 
+  const { data: blockRows = [] } = useQuery<{ blocker_id: string; blocked_id: string }[]>({
+    queryKey: ["blocks", me, otherId],
+    enabled: !!me && !isSelf,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("user_blocks")
+        .select("blocker_id, blocked_id")
+        .or(`and(blocker_id.eq.${me},blocked_id.eq.${otherId}),and(blocker_id.eq.${otherId},blocked_id.eq.${me})`);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+  const iBlockedThem = blockRows.some((b) => b.blocker_id === me);
+  const theyBlockedMe = blockRows.some((b) => b.blocker_id === otherId);
+  const blocked = iBlockedThem || theyBlockedMe;
+
   const blockUser = async () => {
     if (!me || isSelf) return;
     const { error } = await supabase.from("user_blocks").insert({ blocker_id: me, blocked_id: otherId });
     if (error && !error.message.includes("duplicate")) { toast.error(error.message); return; }
     toast.success("کاربر مسدود شد");
+    qc.invalidateQueries({ queryKey: ["blocks", me, otherId] });
     qc.invalidateQueries({ queryKey: ["chats"] });
-    navigate({ to: "/chats" });
+  };
+
+  const unblockUser = async () => {
+    if (!me) return;
+    const { error } = await supabase.from("user_blocks").delete().eq("blocker_id", me).eq("blocked_id", otherId);
+    if (error) { toast.error(error.message); return; }
+    toast.success("رفع مسدودی انجام شد");
+    qc.invalidateQueries({ queryKey: ["blocks", me, otherId] });
   };
 
   return (
@@ -565,6 +591,21 @@ function ChatView() {
         </div>
       )}
 
+      {blocked ? (
+        <div className="sticky bottom-0 bg-card/95 backdrop-blur border-t">
+          <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
+            <ShieldAlert className="w-5 h-5 text-destructive shrink-0" />
+            <p className="text-sm flex-1 text-muted-foreground">
+              {iBlockedThem
+                ? "شما این کاربر را مسدود کرده‌اید. برای ارسال پیام رفع مسدود بزنید."
+                : "شما توسط این کاربر مسدود شده‌اید."}
+            </p>
+            {iBlockedThem && (
+              <Button size="sm" variant="outline" onClick={unblockUser}>رفع مسدود</Button>
+            )}
+          </div>
+        </div>
+      ) : (
       <div className="sticky bottom-0 bg-card/95 backdrop-blur border-t">
         <div className="max-w-2xl mx-auto p-2 flex items-end gap-1.5">
           {!editing && (
@@ -606,6 +647,7 @@ function ChatView() {
           )}
         </div>
       </div>
+      )}
 
       <Dialog open={!!imageView} onOpenChange={(o) => !o && setImageView(null)}>
         <DialogContent className="max-w-3xl p-2 bg-black/95 border-0">
@@ -733,15 +775,30 @@ function MessageBubble({
             {m.attachment_type === "audio" && signed && (
               <VoicePlayer src={signed} mine={mine} />
             )}
-            {m.attachment_type === "file" && signed && (
-              <a
-                href={signed} download target="_blank" rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="underline flex items-center gap-2"
-              >
-                <Download className="w-4 h-4" /> دانلود فایل
-              </a>
-            )}
+            {m.attachment_type === "file" && signed && (() => {
+              const url = m.attachment_url || "";
+              const isAudio = /\.(mp3|wav|ogg|m4a|aac|flac|opus)(\?|$)/i.test(url);
+              if (isAudio) {
+                const fname = decodeURIComponent(url.split("/").pop() || "آهنگ").replace(/^\d+-[a-z0-9]+\./i, "");
+                return (
+                  <div className={`rounded-xl p-2 mb-1 ${mine ? "bg-white/10" : "bg-primary/10"}`}>
+                    <p className={`text-xs mb-1 truncate flex items-center gap-1 ${mine ? "text-white/90" : "text-primary"}`}>
+                      🎵 <span className="truncate" dir="ltr">{fname}</span>
+                    </p>
+                    <VoicePlayer src={signed} mine={mine} />
+                  </div>
+                );
+              }
+              return (
+                <a
+                  href={signed} download target="_blank" rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="underline flex items-center gap-2"
+                >
+                  <Download className="w-4 h-4" /> دانلود فایل
+                </a>
+              );
+            })()}
             {m.content && <MessageText text={m.content} mine={mine} />}
             <div className={`text-[10px] mt-1 flex items-center gap-1 ${mine ? "opacity-80" : "text-muted-foreground"}`}>
               {m.is_pinned && <Pin className="w-3 h-3" />}
