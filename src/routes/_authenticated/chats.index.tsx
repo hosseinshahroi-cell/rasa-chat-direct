@@ -381,7 +381,7 @@ function StoriesBar({ me }: { me: string | null }) {
     const isVideo = file.type.startsWith("video/");
     const isImage = file.type.startsWith("image/");
     if (!isImage && !isVideo) { toast.error("فقط عکس یا ویدئو قابل انتشار است"); return; }
-    if (file.size > 50 * 1024 * 1024) { toast.error("حداکثر حجم استوری ۵۰ مگابایت است"); return; }
+    if (file.size > 100 * 1024 * 1024) { toast.error("حداکثر حجم استوری ۱۰۰ مگابایت است"); return; }
     setUploading(true);
     try {
       const ext = file.name.split(".").pop() || (isVideo ? "mp4" : "jpg");
