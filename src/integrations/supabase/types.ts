@@ -421,6 +421,32 @@ export type Database = {
         }
         Relationships: []
       }
+      story_likes: {
+        Row: {
+          created_at: string
+          story_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          story_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          story_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "story_likes_story_id_fkey"
+            columns: ["story_id"]
+            isOneToOne: false
+            referencedRelation: "stories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       story_views: {
         Row: {
           story_id: string
@@ -500,6 +526,8 @@ export type Database = {
           display_name: string
           expires_at: string
           id: string
+          like_count: number
+          liked_by_me: boolean
           media_type: string
           media_url: string
           user_id: string
@@ -700,6 +728,18 @@ export type Database = {
         Args: { p_reason: string; p_subject: string; reported: string }
         Returns: string
       }
+      story_viewers: {
+        Args: { p_story: string }
+        Returns: {
+          avatar_url: string
+          display_name: string
+          liked: boolean
+          user_id: string
+          username: string
+          viewed_at: string
+        }[]
+      }
+      toggle_story_like: { Args: { p_story: string }; Returns: boolean }
       touch_last_seen: { Args: never; Returns: undefined }
       view_story: { Args: { p_story: string }; Returns: undefined }
     }
