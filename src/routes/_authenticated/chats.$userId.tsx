@@ -326,7 +326,7 @@ function ChatView() {
   const onFile = (e: React.ChangeEvent<HTMLInputElement>, type: "image" | "file") => {
     const f = e.target.files?.[0];
     if (!f) return;
-    if (f.size > 20 * 1024 * 1024) { toast.error("حداکثر ۲۰ مگابایت"); return; }
+    if (f.size > 100 * 1024 * 1024) { toast.error("حداکثر ۱۰۰ مگابایت"); return; }
     uploadAndSend(f, type);
     e.target.value = "";
   };
