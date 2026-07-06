@@ -52,7 +52,18 @@ interface StoryItem {
   created_at: string;
   expires_at: string;
   view_count: number;
+  like_count: number;
   viewed_by_me: boolean;
+  liked_by_me: boolean;
+}
+
+interface StoryViewer {
+  user_id: string;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  viewed_at: string;
+  liked: boolean;
 }
 
 function ChatsList() {
