@@ -24,6 +24,7 @@ import { VoicePlayer } from "@/components/VoicePlayer";
 import { ReportDialog } from "@/components/ReportDialog";
 import { ForwardDialog } from "@/components/ForwardDialog";
 import { MessageText } from "@/components/MessageText";
+import { FileAttachment } from "@/components/FileAttachment";
 
 const REACTION_EMOJIS = ["❤️", "👍", "👎", "😂", "😮", "😢", "🔥", "🙏"];
 
