@@ -426,10 +426,12 @@ function StoriesBar({ me }: { me: string | null }) {
       <Dialog open={!!viewer} onOpenChange={(o) => !o && setViewer(null)}>
         <DialogContent className="max-w-sm p-0 overflow-hidden bg-background border-0">
           {viewer && (
-            <div className="relative min-h-[70vh] bg-black flex items-center justify-center">
-              {!signed && <Loader2 className="w-6 h-6 animate-spin text-primary" />}
-              {signed && viewer.media_type === "image" && <img src={signed} alt="استوری" className="max-h-[80vh] w-full object-contain" />}
-              {signed && viewer.media_type === "video" && <video src={signed} controls autoPlay className="max-h-[80vh] w-full" />}
+            <div className="relative min-h-[70vh] bg-black flex flex-col items-center justify-center">
+              <div className="flex-1 w-full flex items-center justify-center">
+                {!signed && <Loader2 className="w-6 h-6 animate-spin text-primary" />}
+                {signed && viewer.media_type === "image" && <img src={signed} alt="استوری" className="max-h-[70vh] w-full object-contain" />}
+                {signed && viewer.media_type === "video" && <video src={signed} controls autoPlay className="max-h-[70vh] w-full" />}
+              </div>
               <div className="absolute top-0 inset-x-0 p-3 bg-gradient-to-b from-black/70 to-transparent text-primary-foreground">
                 <div className="flex items-center gap-2">
                   <UserAvatar avatarPath={viewer.avatar_url} name={viewer.display_name || viewer.username} className="w-9 h-9" />
@@ -437,7 +439,6 @@ function StoriesBar({ me }: { me: string | null }) {
                     <p className="text-sm font-semibold truncate">{viewer.display_name || viewer.username}</p>
                     <p className="text-[11px] opacity-80">{formatRelativeTime(viewer.created_at)}</p>
                   </div>
-                  <span className="inline-flex items-center gap-1 text-xs"><Eye className="w-3.5 h-3.5" /> {viewer.view_count}</span>
                   {viewer.user_id === me && (
                     <Button size="icon" variant="destructive" className="h-8 w-8 rounded-full" onClick={() => deleteStory(viewer)} title="حذف استوری">
                       <Trash2 className="w-4 h-4" />
@@ -445,10 +446,53 @@ function StoriesBar({ me }: { me: string | null }) {
                   )}
                 </div>
               </div>
+              <div className="w-full bg-gradient-to-t from-black/85 to-transparent px-3 py-3 flex items-center gap-3 text-primary-foreground">
+                {viewer.user_id === me ? (
+                  <button
+                    onClick={() => { loadViewers(viewer.id); setShowViewers(true); }}
+                    className="flex items-center gap-3 text-sm hover:opacity-90"
+                  >
+                    <span className="inline-flex items-center gap-1"><Eye className="w-4 h-4" /> {viewer.view_count} بازدید</span>
+                    <span className="inline-flex items-center gap-1"><Heart className="w-4 h-4 fill-red-500 text-red-500" /> {viewer.like_count}</span>
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => toggleLike(viewer)}
+                      className="inline-flex items-center gap-1.5 text-sm"
+                      aria-label="لایک"
+                    >
+                      <Heart className={`w-6 h-6 transition ${viewer.liked_by_me ? "fill-red-500 text-red-500 scale-110" : "text-white"}`} />
+                      {viewer.like_count > 0 && <span>{viewer.like_count}</span>}
+                    </button>
+                    <span className="ml-auto inline-flex items-center gap-1 text-xs opacity-80"><Eye className="w-3.5 h-3.5" /> {viewer.view_count}</span>
+                  </>
+                )}
+              </div>
             </div>
           )}
         </DialogContent>
       </Dialog>
+      <Sheet open={showViewers} onOpenChange={setShowViewers}>
+        <SheetContent side="bottom" className="max-h-[70vh] overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>بازدیدکنندگان</SheetTitle>
+          </SheetHeader>
+          <div className="mt-3 space-y-1">
+            {viewers.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">هنوز کسی استوری را ندیده</p>}
+            {viewers.map((v) => (
+              <div key={v.user_id} className="flex items-center gap-2 py-2 border-b last:border-0">
+                <UserAvatar avatarPath={v.avatar_url} name={v.display_name || v.username} className="w-9 h-9" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{v.display_name || v.username}</p>
+                  <p className="text-[11px] text-muted-foreground truncate">@{v.username}</p>
+                </div>
+                {v.liked && <Heart className="w-4 h-4 fill-red-500 text-red-500" />}
+              </div>
+            ))}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
