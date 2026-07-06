@@ -24,6 +24,7 @@ import { VoicePlayer } from "@/components/VoicePlayer";
 import { ReportDialog } from "@/components/ReportDialog";
 import { ForwardDialog } from "@/components/ForwardDialog";
 import { MessageText } from "@/components/MessageText";
+import { FileAttachment } from "@/components/FileAttachment";
 
 const REACTION_EMOJIS = ["❤️", "👍", "👎", "😂", "😮", "😢", "🔥", "🙏"];
 
@@ -326,7 +327,7 @@ function ChatView() {
   const onFile = (e: React.ChangeEvent<HTMLInputElement>, type: "image" | "file") => {
     const f = e.target.files?.[0];
     if (!f) return;
-    if (f.size > 20 * 1024 * 1024) { toast.error("حداکثر ۲۰ مگابایت"); return; }
+    if (f.size > 100 * 1024 * 1024) { toast.error("حداکثر ۱۰۰ مگابایت"); return; }
     uploadAndSend(f, type);
     e.target.value = "";
   };
@@ -789,15 +790,8 @@ function MessageBubble({
                   </div>
                 );
               }
-              return (
-                <a
-                  href={signed} download target="_blank" rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="underline flex items-center gap-2"
-                >
-                  <Download className="w-4 h-4" /> دانلود فایل
-                </a>
-              );
+              const fname = decodeURIComponent(url.split("/").pop() || "file").replace(/^\d+-[a-z0-9]+\./i, "file.");
+              return <FileAttachment src={signed} name={fname} mine={mine} />;
             })()}
             {m.content && <MessageText text={m.content} mine={mine} />}
             <div className={`text-[10px] mt-1 flex items-center gap-1 ${mine ? "opacity-80" : "text-muted-foreground"}`}>

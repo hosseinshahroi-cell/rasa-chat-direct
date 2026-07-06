@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/UserAvatar";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { MessageCirclePlus, Settings, Shield, MessageCircle, Bookmark, BadgeCheck, Users, Search, Radio, Plus, Eye, Loader2, X, Trash2 } from "lucide-react";
+import { MessageCirclePlus, Settings, Shield, MessageCircle, Bookmark, BadgeCheck, Users, Search, Radio, Plus, Eye, Loader2, X, Trash2, Heart } from "lucide-react";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Logo, useBranding } from "@/components/Logo";
 import { formatRelativeTime } from "@/lib/format";
 import { getCachedUserId, setCachedUserId } from "@/lib/cache";
@@ -52,7 +53,18 @@ interface StoryItem {
   created_at: string;
   expires_at: string;
   view_count: number;
+  like_count: number;
   viewed_by_me: boolean;
+  liked_by_me: boolean;
+}
+
+interface StoryViewer {
+  user_id: string;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  viewed_at: string;
+  liked: boolean;
 }
 
 function ChatsList() {
@@ -304,6 +316,8 @@ function StoriesBar({ me }: { me: string | null }) {
   const [uploading, setUploading] = useState(false);
   const [viewer, setViewer] = useState<StoryItem | null>(null);
   const [signed, setSigned] = useState<string | null>(null);
+  const [showViewers, setShowViewers] = useState(false);
+  const [viewers, setViewers] = useState<StoryViewer[]>([]);
 
   const { data: stories = [] } = useQuery<StoryItem[]>({
     queryKey: ["stories"],
@@ -312,7 +326,11 @@ function StoriesBar({ me }: { me: string | null }) {
     queryFn: async () => {
       const { data, error } = await (supabase.rpc as any)("active_stories");
       if (error) throw error;
-      return (data || []).map((s: StoryItem) => ({ ...s, view_count: Number(s.view_count) }));
+      return (data || []).map((s: StoryItem) => ({
+        ...s,
+        view_count: Number(s.view_count),
+        like_count: Number(s.like_count || 0),
+      }));
     },
   });
 
@@ -322,9 +340,20 @@ function StoriesBar({ me }: { me: string | null }) {
       .channel("stories-live")
       .on("postgres_changes", { event: "*", schema: "public", table: "stories" }, () => qc.invalidateQueries({ queryKey: ["stories"] }))
       .on("postgres_changes", { event: "*", schema: "public", table: "story_views" }, () => qc.invalidateQueries({ queryKey: ["stories"] }))
+      .on("postgres_changes", { event: "*", schema: "public", table: "story_likes" }, () => qc.invalidateQueries({ queryKey: ["stories"] }))
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [me, qc]);
+
+  const loadViewers = async (storyId: string) => {
+    const { data } = await (supabase.rpc as any)("story_viewers", { p_story: storyId });
+    setViewers((data as StoryViewer[]) || []);
+  };
+
+  const toggleLike = async (story: StoryItem) => {
+    await (supabase.rpc as any)("toggle_story_like", { p_story: story.id });
+    qc.invalidateQueries({ queryKey: ["stories"] });
+  };
 
   useEffect(() => {
     if (!viewer) { setSigned(null); return; }
@@ -336,6 +365,15 @@ function StoriesBar({ me }: { me: string | null }) {
     return () => { alive = false; };
   }, [viewer, me, qc]);
 
+  // Keep viewer in sync with fresh stories data (like counts, etc.)
+  useEffect(() => {
+    if (!viewer) return;
+    const fresh = stories.find((s) => s.id === viewer.id);
+    if (fresh && (fresh.like_count !== viewer.like_count || fresh.liked_by_me !== viewer.liked_by_me || fresh.view_count !== viewer.view_count)) {
+      setViewer(fresh);
+    }
+  }, [stories, viewer]);
+
   const onStoryFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -343,7 +381,7 @@ function StoriesBar({ me }: { me: string | null }) {
     const isVideo = file.type.startsWith("video/");
     const isImage = file.type.startsWith("image/");
     if (!isImage && !isVideo) { toast.error("فقط عکس یا ویدئو قابل انتشار است"); return; }
-    if (file.size > 50 * 1024 * 1024) { toast.error("حداکثر حجم استوری ۵۰ مگابایت است"); return; }
+    if (file.size > 100 * 1024 * 1024) { toast.error("حداکثر حجم استوری ۱۰۰ مگابایت است"); return; }
     setUploading(true);
     try {
       const ext = file.name.split(".").pop() || (isVideo ? "mp4" : "jpg");
@@ -397,10 +435,12 @@ function StoriesBar({ me }: { me: string | null }) {
       <Dialog open={!!viewer} onOpenChange={(o) => !o && setViewer(null)}>
         <DialogContent className="max-w-sm p-0 overflow-hidden bg-background border-0">
           {viewer && (
-            <div className="relative min-h-[70vh] bg-black flex items-center justify-center">
-              {!signed && <Loader2 className="w-6 h-6 animate-spin text-primary" />}
-              {signed && viewer.media_type === "image" && <img src={signed} alt="استوری" className="max-h-[80vh] w-full object-contain" />}
-              {signed && viewer.media_type === "video" && <video src={signed} controls autoPlay className="max-h-[80vh] w-full" />}
+            <div className="relative min-h-[70vh] bg-black flex flex-col items-center justify-center">
+              <div className="flex-1 w-full flex items-center justify-center">
+                {!signed && <Loader2 className="w-6 h-6 animate-spin text-primary" />}
+                {signed && viewer.media_type === "image" && <img src={signed} alt="استوری" className="max-h-[70vh] w-full object-contain" />}
+                {signed && viewer.media_type === "video" && <video src={signed} controls autoPlay className="max-h-[70vh] w-full" />}
+              </div>
               <div className="absolute top-0 inset-x-0 p-3 bg-gradient-to-b from-black/70 to-transparent text-primary-foreground">
                 <div className="flex items-center gap-2">
                   <UserAvatar avatarPath={viewer.avatar_url} name={viewer.display_name || viewer.username} className="w-9 h-9" />
@@ -408,7 +448,6 @@ function StoriesBar({ me }: { me: string | null }) {
                     <p className="text-sm font-semibold truncate">{viewer.display_name || viewer.username}</p>
                     <p className="text-[11px] opacity-80">{formatRelativeTime(viewer.created_at)}</p>
                   </div>
-                  <span className="inline-flex items-center gap-1 text-xs"><Eye className="w-3.5 h-3.5" /> {viewer.view_count}</span>
                   {viewer.user_id === me && (
                     <Button size="icon" variant="destructive" className="h-8 w-8 rounded-full" onClick={() => deleteStory(viewer)} title="حذف استوری">
                       <Trash2 className="w-4 h-4" />
@@ -416,10 +455,53 @@ function StoriesBar({ me }: { me: string | null }) {
                   )}
                 </div>
               </div>
+              <div className="w-full bg-gradient-to-t from-black/85 to-transparent px-3 py-3 flex items-center gap-3 text-primary-foreground">
+                {viewer.user_id === me ? (
+                  <button
+                    onClick={() => { loadViewers(viewer.id); setShowViewers(true); }}
+                    className="flex items-center gap-3 text-sm hover:opacity-90"
+                  >
+                    <span className="inline-flex items-center gap-1"><Eye className="w-4 h-4" /> {viewer.view_count} بازدید</span>
+                    <span className="inline-flex items-center gap-1"><Heart className="w-4 h-4 fill-red-500 text-red-500" /> {viewer.like_count}</span>
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => toggleLike(viewer)}
+                      className="inline-flex items-center gap-1.5 text-sm"
+                      aria-label="لایک"
+                    >
+                      <Heart className={`w-6 h-6 transition ${viewer.liked_by_me ? "fill-red-500 text-red-500 scale-110" : "text-white"}`} />
+                      {viewer.like_count > 0 && <span>{viewer.like_count}</span>}
+                    </button>
+                    <span className="ml-auto inline-flex items-center gap-1 text-xs opacity-80"><Eye className="w-3.5 h-3.5" /> {viewer.view_count}</span>
+                  </>
+                )}
+              </div>
             </div>
           )}
         </DialogContent>
       </Dialog>
+      <Sheet open={showViewers} onOpenChange={setShowViewers}>
+        <SheetContent side="bottom" className="max-h-[70vh] overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>بازدیدکنندگان</SheetTitle>
+          </SheetHeader>
+          <div className="mt-3 space-y-1">
+            {viewers.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">هنوز کسی استوری را ندیده</p>}
+            {viewers.map((v) => (
+              <div key={v.user_id} className="flex items-center gap-2 py-2 border-b last:border-0">
+                <UserAvatar avatarPath={v.avatar_url} name={v.display_name || v.username} className="w-9 h-9" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{v.display_name || v.username}</p>
+                  <p className="text-[11px] text-muted-foreground truncate">@{v.username}</p>
+                </div>
+                {v.liked && <Heart className="w-4 h-4 fill-red-500 text-red-500" />}
+              </div>
+            ))}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

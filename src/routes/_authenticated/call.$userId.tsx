@@ -102,7 +102,7 @@ function CallView() {
         });
         await client.join(appId, channel, token, uid);
         const mic = await AgoraRTC.createMicrophoneAudioTrack({
-          encoderConfig: "music_standard",
+          encoderConfig: "speech_standard",
           AEC: true,
           ANS: true,
           AGC: true,
