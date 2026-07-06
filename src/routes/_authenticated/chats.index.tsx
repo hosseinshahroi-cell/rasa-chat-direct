@@ -365,6 +365,15 @@ function StoriesBar({ me }: { me: string | null }) {
     return () => { alive = false; };
   }, [viewer, me, qc]);
 
+  // Keep viewer in sync with fresh stories data (like counts, etc.)
+  useEffect(() => {
+    if (!viewer) return;
+    const fresh = stories.find((s) => s.id === viewer.id);
+    if (fresh && (fresh.like_count !== viewer.like_count || fresh.liked_by_me !== viewer.liked_by_me || fresh.view_count !== viewer.view_count)) {
+      setViewer(fresh);
+    }
+  }, [stories, viewer]);
+
   const onStoryFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
