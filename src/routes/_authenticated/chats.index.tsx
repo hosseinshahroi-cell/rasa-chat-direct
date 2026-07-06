@@ -316,6 +316,8 @@ function StoriesBar({ me }: { me: string | null }) {
   const [uploading, setUploading] = useState(false);
   const [viewer, setViewer] = useState<StoryItem | null>(null);
   const [signed, setSigned] = useState<string | null>(null);
+  const [showViewers, setShowViewers] = useState(false);
+  const [viewers, setViewers] = useState<StoryViewer[]>([]);
 
   const { data: stories = [] } = useQuery<StoryItem[]>({
     queryKey: ["stories"],
@@ -324,7 +326,11 @@ function StoriesBar({ me }: { me: string | null }) {
     queryFn: async () => {
       const { data, error } = await (supabase.rpc as any)("active_stories");
       if (error) throw error;
-      return (data || []).map((s: StoryItem) => ({ ...s, view_count: Number(s.view_count) }));
+      return (data || []).map((s: StoryItem) => ({
+        ...s,
+        view_count: Number(s.view_count),
+        like_count: Number(s.like_count || 0),
+      }));
     },
   });
 
@@ -334,9 +340,20 @@ function StoriesBar({ me }: { me: string | null }) {
       .channel("stories-live")
       .on("postgres_changes", { event: "*", schema: "public", table: "stories" }, () => qc.invalidateQueries({ queryKey: ["stories"] }))
       .on("postgres_changes", { event: "*", schema: "public", table: "story_views" }, () => qc.invalidateQueries({ queryKey: ["stories"] }))
+      .on("postgres_changes", { event: "*", schema: "public", table: "story_likes" }, () => qc.invalidateQueries({ queryKey: ["stories"] }))
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [me, qc]);
+
+  const loadViewers = async (storyId: string) => {
+    const { data } = await (supabase.rpc as any)("story_viewers", { p_story: storyId });
+    setViewers((data as StoryViewer[]) || []);
+  };
+
+  const toggleLike = async (story: StoryItem) => {
+    await (supabase.rpc as any)("toggle_story_like", { p_story: story.id });
+    qc.invalidateQueries({ queryKey: ["stories"] });
+  };
 
   useEffect(() => {
     if (!viewer) { setSigned(null); return; }
