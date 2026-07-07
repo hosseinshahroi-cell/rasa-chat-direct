@@ -315,7 +315,7 @@ function ChatView() {
     qc.invalidateQueries({ queryKey: ["messages", me, otherId] });
   };
 
-  const uploadAndSend = async (file: File, type: "image" | "audio" | "file") => {
+  const uploadAndSend = async (file: File, type: "image" | "video" | "audio" | "file") => {
     if (!me) return;
     const ext = file.name.split(".").pop() || "bin";
     const path = `${me}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
@@ -324,12 +324,30 @@ function ChatView() {
     await sendMessage(null, { url: path, type });
   };
 
-  const onFile = (e: React.ChangeEvent<HTMLInputElement>, type: "image" | "file") => {
+  const onFile = (e: React.ChangeEvent<HTMLInputElement>, kind: "media" | "file") => {
     const f = e.target.files?.[0];
     if (!f) return;
     if (f.size > 100 * 1024 * 1024) { toast.error("حداکثر ۱۰۰ مگابایت"); return; }
+    let type: "image" | "video" | "audio" | "file" = "file";
+    if (kind === "media") {
+      if (f.type.startsWith("video/")) type = "video";
+      else if (f.type.startsWith("image/")) type = "image";
+      else if (f.type.startsWith("audio/")) type = "audio";
+    }
     uploadAndSend(f, type);
     e.target.value = "";
+  };
+
+  const directDownload = async (url: string, name: string) => {
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const obj = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = obj; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(obj), 500);
+    } catch { toast.error("خطا در دانلود"); }
   };
 
   const startRecord = async () => {
@@ -560,6 +578,7 @@ function ChatView() {
                   } else toast.error("متنی برای کپی نیست");
                 }}
                 onImageClick={(url) => setImageView({ url, name: m.attachment_url || "image" })}
+                onDownload={directDownload}
               />
             );
           })}
@@ -618,7 +637,7 @@ function ChatView() {
                 <ImageIcon className="w-5 h-5" />
               </Button>
               <input ref={fileRef} type="file" hidden onChange={(e) => onFile(e, "file")} />
-              <input ref={imgRef} type="file" accept="image/*" hidden onChange={(e) => onFile(e, "image")} />
+              <input ref={imgRef} type="file" accept="image/*,video/*" hidden onChange={(e) => onFile(e, "media")} />
             </>
           )}
           <Input
@@ -655,9 +674,9 @@ function ChatView() {
           {imageView && (
             <div className="flex flex-col items-center gap-3">
               <img src={imageView.url} alt="" className="max-h-[80vh] w-auto rounded" />
-              <a href={imageView.url} download target="_blank" rel="noopener noreferrer">
-                <Button variant="secondary"><Download className="w-4 h-4 ml-2" /> دانلود</Button>
-              </a>
+              <Button variant="secondary" onClick={() => directDownload(imageView.url, imageView.name.split("/").pop() || "image")}>
+                <Download className="w-4 h-4 ml-2" /> دانلود
+              </Button>
             </div>
           )}
         </DialogContent>
@@ -685,7 +704,7 @@ function ChatView() {
 }
 
 function MessageBubble({
-  m, mine, signed, replied, reactions, me, onReact, onReply, onEdit, onPin, onDelete, onForward, onCopy, onImageClick,
+  m, mine, signed, replied, reactions, me, onReact, onReply, onEdit, onPin, onDelete, onForward, onCopy, onImageClick, onDownload,
 }: {
   m: Message;
   mine: boolean;
@@ -701,6 +720,7 @@ function MessageBubble({
   onForward: () => void;
   onCopy: () => void;
   onImageClick: (url: string) => void;
+  onDownload: (url: string, name: string) => void;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -741,10 +761,11 @@ function MessageBubble({
     <div className={`flex flex-col ${mine ? "items-start" : "items-end"} group`}>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <button
-            type="button"
+          <div
+            role="button"
+            tabIndex={0}
             onContextMenu={(e) => { e.preventDefault(); setOpen(true); }}
-            className={`max-w-[75%] text-start rounded-2xl px-3 py-2 transition ${
+            className={`max-w-[75%] text-start rounded-2xl px-3 py-2 transition cursor-pointer ${
               mine
                 ? "bg-[color:var(--color-chat-bubble-me)] text-[color:var(--color-chat-bubble-me-foreground)] rounded-bl-sm"
                 : "bg-[color:var(--color-chat-bubble-other)] text-[color:var(--color-chat-bubble-other-foreground)] rounded-br-sm"
@@ -763,14 +784,32 @@ function MessageBubble({
                   onClick={(e) => { e.stopPropagation(); onImageClick(signed); }}
                   className="rounded-lg max-h-64 cursor-zoom-in"
                 />
-                <a
-                  href={signed} download target="_blank" rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onDownload(signed, (m.attachment_url || "image").split("/").pop() || "image"); }}
                   className="absolute top-1.5 left-1.5 bg-black/55 hover:bg-black/75 text-white rounded-full p-1.5 transition"
                   title="دانلود"
                 >
                   <Download className="w-3.5 h-3.5" />
-                </a>
+                </button>
+              </div>
+            )}
+            {m.attachment_type === "video" && signed && (
+              <div className="relative mb-1 group/vid">
+                <video
+                  src={signed} controls playsInline preload="metadata"
+                  controlsList="nodownload noplaybackrate"
+                  onClick={(e) => e.stopPropagation()}
+                  className="rounded-lg max-h-72 w-auto"
+                />
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onDownload(signed, (m.attachment_url || "video").split("/").pop() || "video"); }}
+                  className="absolute top-1.5 left-1.5 bg-black/55 hover:bg-black/75 text-white rounded-full p-1.5 transition"
+                  title="دانلود"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                </button>
               </div>
             )}
             {m.attachment_type === "audio" && signed && (
@@ -800,7 +839,7 @@ function MessageBubble({
               <span>{formatChatTime(m.created_at)}</span>
               {mine && (m.read_at ? <CheckCheck className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />)}
             </div>
-          </button>
+          </div>
         </PopoverTrigger>
         <PopoverContent className="w-56 p-1" align={mine ? "start" : "end"}>
           <div className="flex flex-wrap gap-1 px-1 py-1.5 border-b mb-1">
