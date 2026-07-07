@@ -315,7 +315,7 @@ function ChatView() {
     qc.invalidateQueries({ queryKey: ["messages", me, otherId] });
   };
 
-  const uploadAndSend = async (file: File, type: "image" | "audio" | "file") => {
+  const uploadAndSend = async (file: File, type: "image" | "video" | "audio" | "file") => {
     if (!me) return;
     const ext = file.name.split(".").pop() || "bin";
     const path = `${me}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
@@ -324,12 +324,30 @@ function ChatView() {
     await sendMessage(null, { url: path, type });
   };
 
-  const onFile = (e: React.ChangeEvent<HTMLInputElement>, type: "image" | "file") => {
+  const onFile = (e: React.ChangeEvent<HTMLInputElement>, kind: "media" | "file") => {
     const f = e.target.files?.[0];
     if (!f) return;
     if (f.size > 100 * 1024 * 1024) { toast.error("حداکثر ۱۰۰ مگابایت"); return; }
+    let type: "image" | "video" | "audio" | "file" = "file";
+    if (kind === "media") {
+      if (f.type.startsWith("video/")) type = "video";
+      else if (f.type.startsWith("image/")) type = "image";
+      else if (f.type.startsWith("audio/")) type = "audio";
+    }
     uploadAndSend(f, type);
     e.target.value = "";
+  };
+
+  const directDownload = async (url: string, name: string) => {
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const obj = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = obj; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(obj), 500);
+    } catch { toast.error("خطا در دانلود"); }
   };
 
   const startRecord = async () => {
