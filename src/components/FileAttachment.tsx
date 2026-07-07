@@ -95,6 +95,6 @@ export function FileAttachment({ src, name, mine }: { src: string; name: string;
           {state === "loading" ? `در حال دانلود ${progress}%` : state === "done" ? "دانلود شد" : (size ? humanSize(size) : "برای دانلود ضربه بزنید")}
         </p>
       </div>
-    </button>
+    </div>
   );
 }
