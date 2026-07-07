@@ -433,13 +433,20 @@ function StoriesBar({ me }: { me: string | null }) {
         ))}
       </div>
       <Dialog open={!!viewer} onOpenChange={(o) => !o && setViewer(null)}>
-        <DialogContent className="max-w-sm p-0 overflow-hidden bg-background border-0">
+        <DialogContent className="max-w-none w-screen h-[100dvh] p-0 m-0 rounded-none overflow-hidden bg-black border-0 sm:rounded-none">
           {viewer && (
-            <div className="relative min-h-[70vh] bg-black flex flex-col items-center justify-center">
+            <div className="relative w-full h-full bg-black flex flex-col items-center justify-center">
               <div className="flex-1 w-full flex items-center justify-center">
                 {!signed && <Loader2 className="w-6 h-6 animate-spin text-primary" />}
-                {signed && viewer.media_type === "image" && <img src={signed} alt="استوری" className="max-h-[70vh] w-full object-contain" />}
-                {signed && viewer.media_type === "video" && <video src={signed} controls autoPlay className="max-h-[70vh] w-full" />}
+                {signed && viewer.media_type === "image" && <img src={signed} alt="استوری" className="max-h-full max-w-full w-auto h-auto object-contain" />}
+                {signed && viewer.media_type === "video" && (
+                  <video
+                    src={signed} autoPlay playsInline controls
+                    controlsList="nodownload nofullscreen noremoteplayback noplaybackrate"
+                    disablePictureInPicture
+                    className="max-h-full max-w-full w-auto h-auto"
+                  />
+                )}
               </div>
               <div className="absolute top-0 inset-x-0 p-3 bg-gradient-to-b from-black/70 to-transparent text-primary-foreground">
                 <div className="flex items-center gap-2">
