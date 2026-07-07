@@ -636,7 +636,7 @@ function ChatView() {
                 <ImageIcon className="w-5 h-5" />
               </Button>
               <input ref={fileRef} type="file" hidden onChange={(e) => onFile(e, "file")} />
-              <input ref={imgRef} type="file" accept="image/*" hidden onChange={(e) => onFile(e, "image")} />
+              <input ref={imgRef} type="file" accept="image/*,video/*" hidden onChange={(e) => onFile(e, "media")} />
             </>
           )}
           <Input
