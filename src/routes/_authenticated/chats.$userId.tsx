@@ -704,7 +704,7 @@ function ChatView() {
 }
 
 function MessageBubble({
-  m, mine, signed, replied, reactions, me, onReact, onReply, onEdit, onPin, onDelete, onForward, onCopy, onImageClick,
+  m, mine, signed, replied, reactions, me, onReact, onReply, onEdit, onPin, onDelete, onForward, onCopy, onImageClick, onDownload,
 }: {
   m: Message;
   mine: boolean;
@@ -720,6 +720,7 @@ function MessageBubble({
   onForward: () => void;
   onCopy: () => void;
   onImageClick: (url: string) => void;
+  onDownload: (url: string, name: string) => void;
 }) {
   const [open, setOpen] = useState(false);
 
