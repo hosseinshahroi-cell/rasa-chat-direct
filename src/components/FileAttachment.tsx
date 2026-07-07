@@ -59,10 +59,11 @@ export function FileAttachment({ src, name, mine }: { src: string; name: string;
   const bgBtn = mine ? "bg-white text-primary" : "bg-primary text-primary-foreground";
 
   return (
-    <button
-      type="button"
-      onClick={download}
-      className={`flex items-center gap-2.5 min-w-[220px] py-1 text-right ${mine ? "text-white" : "text-foreground"}`}
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={(e) => { e.stopPropagation(); download(e); }}
+      className={`flex items-center gap-2.5 min-w-[220px] py-1 text-right cursor-pointer select-none ${mine ? "text-white" : "text-foreground"}`}
     >
       <div className="relative w-12 h-12 shrink-0">
         {state === "loading" && (
