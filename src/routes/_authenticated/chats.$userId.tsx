@@ -761,10 +761,11 @@ function MessageBubble({
     <div className={`flex flex-col ${mine ? "items-start" : "items-end"} group`}>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <button
-            type="button"
+          <div
+            role="button"
+            tabIndex={0}
             onContextMenu={(e) => { e.preventDefault(); setOpen(true); }}
-            className={`max-w-[75%] text-start rounded-2xl px-3 py-2 transition ${
+            className={`max-w-[75%] text-start rounded-2xl px-3 py-2 transition cursor-pointer ${
               mine
                 ? "bg-[color:var(--color-chat-bubble-me)] text-[color:var(--color-chat-bubble-me-foreground)] rounded-bl-sm"
                 : "bg-[color:var(--color-chat-bubble-other)] text-[color:var(--color-chat-bubble-other-foreground)] rounded-br-sm"
@@ -783,14 +784,32 @@ function MessageBubble({
                   onClick={(e) => { e.stopPropagation(); onImageClick(signed); }}
                   className="rounded-lg max-h-64 cursor-zoom-in"
                 />
-                <a
-                  href={signed} download target="_blank" rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onDownload(signed, (m.attachment_url || "image").split("/").pop() || "image"); }}
                   className="absolute top-1.5 left-1.5 bg-black/55 hover:bg-black/75 text-white rounded-full p-1.5 transition"
                   title="دانلود"
                 >
                   <Download className="w-3.5 h-3.5" />
-                </a>
+                </button>
+              </div>
+            )}
+            {m.attachment_type === "video" && signed && (
+              <div className="relative mb-1 group/vid">
+                <video
+                  src={signed} controls playsInline preload="metadata"
+                  controlsList="nodownload noplaybackrate"
+                  onClick={(e) => e.stopPropagation()}
+                  className="rounded-lg max-h-72 w-auto"
+                />
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onDownload(signed, (m.attachment_url || "video").split("/").pop() || "video"); }}
+                  className="absolute top-1.5 left-1.5 bg-black/55 hover:bg-black/75 text-white rounded-full p-1.5 transition"
+                  title="دانلود"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                </button>
               </div>
             )}
             {m.attachment_type === "audio" && signed && (
