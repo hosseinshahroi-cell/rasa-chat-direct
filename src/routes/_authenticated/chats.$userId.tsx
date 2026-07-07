@@ -578,6 +578,7 @@ function ChatView() {
                   } else toast.error("متنی برای کپی نیست");
                 }}
                 onImageClick={(url) => setImageView({ url, name: m.attachment_url || "image" })}
+                onDownload={directDownload}
               />
             );
           })}
