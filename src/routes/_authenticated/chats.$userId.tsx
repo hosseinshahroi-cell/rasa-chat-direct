@@ -839,7 +839,7 @@ function MessageBubble({
               <span>{formatChatTime(m.created_at)}</span>
               {mine && (m.read_at ? <CheckCheck className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />)}
             </div>
-          </button>
+          </div>
         </PopoverTrigger>
         <PopoverContent className="w-56 p-1" align={mine ? "start" : "end"}>
           <div className="flex flex-wrap gap-1 px-1 py-1.5 border-b mb-1">
