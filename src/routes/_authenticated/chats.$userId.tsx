@@ -674,9 +674,9 @@ function ChatView() {
           {imageView && (
             <div className="flex flex-col items-center gap-3">
               <img src={imageView.url} alt="" className="max-h-[80vh] w-auto rounded" />
-              <a href={imageView.url} download target="_blank" rel="noopener noreferrer">
-                <Button variant="secondary"><Download className="w-4 h-4 ml-2" /> دانلود</Button>
-              </a>
+              <Button variant="secondary" onClick={() => directDownload(imageView.url, imageView.name.split("/").pop() || "image")}>
+                <Download className="w-4 h-4 ml-2" /> دانلود
+              </Button>
             </div>
           )}
         </DialogContent>
