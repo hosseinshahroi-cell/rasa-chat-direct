@@ -6,11 +6,14 @@ import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/UserAvatar";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { MessageCirclePlus, Settings, Shield, MessageCircle, Bookmark, BadgeCheck, Users, Search, Radio, Plus, Eye, Loader2, X, Trash2, Heart } from "lucide-react";
+import { MessageCirclePlus, Settings, Shield, MessageCircle, Bookmark, BadgeCheck, Users, Search, Radio, Plus, Eye, Loader2, X, Trash2, Heart, Eraser, BellOff, Bell, Check } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Logo, useBranding } from "@/components/Logo";
 import { formatRelativeTime } from "@/lib/format";
-import { getCachedUserId, setCachedUserId } from "@/lib/cache";
+import {
+  getCachedUserId, setCachedUserId, readSnapshot, writeSnapshot,
+  getMutedChats, setChatMuted, getHiddenChats, hideChats,
+} from "@/lib/cache";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/chats/")({
@@ -75,6 +78,15 @@ function ChatsList() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [search, setSearch] = useState("");
   const { data: branding } = useBranding();
+  const [selected, setSelected] = useState<string[]>([]);
+  const [muted, setMuted] = useState<string[]>([]);
+  const [hidden, setHidden] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setMuted(getMutedChats());
+    setHidden(getHiddenChats());
+  }, []);
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
@@ -98,6 +110,8 @@ function ChatsList() {
     queryKey: ["chats", userId],
     enabled: !!userId,
     refetchInterval: 30000,
+    initialData: () => (userId ? readSnapshot<ChatItem[]>(`chats:${userId}`) : undefined),
+    initialDataUpdatedAt: 0,
     queryFn: async () => {
       if (!userId) return [];
 
@@ -161,8 +175,10 @@ function ChatsList() {
         unread: 0, member_count: Number(g.member_count),
       }));
 
-      return [...Array.from(dms.values()), ...groupItems]
+      const result = [...Array.from(dms.values()), ...groupItems]
         .sort((a, b) => b.last_at.localeCompare(a.last_at));
+      writeSnapshot(`chats:${userId}`, result);
+      return result;
     },
   });
 
@@ -186,6 +202,73 @@ function ChatsList() {
     return () => { supabase.removeChannel(ch); };
   }, [userId, qc]);
 
+  const visibleChats = useMemo(
+    () => chats.filter((c) => !hidden.includes(`${c.kind}:${c.id}`)),
+    [chats, hidden],
+  );
+
+  const keyOf = (c: ChatItem) => `${c.kind}:${c.id}`;
+  const selectionMode = selected.length > 0;
+  const toggleSelect = (k: string) =>
+    setSelected((cur) => (cur.includes(k) ? cur.filter((i) => i !== k) : [...cur, k]));
+  const clearSelection = () => setSelected([]);
+  const allMuted = selectionMode && selected.every((k) => muted.includes(k));
+
+  const purgeMessagesFor = async (dmPeerIds: string[]) => {
+    if (!userId || dmPeerIds.length === 0) return;
+    for (const peer of dmPeerIds) {
+      const { data: rows } = await supabase
+        .from("messages")
+        .select("id, deleted_for")
+        .is("group_id", null)
+        .or(`and(sender_id.eq.${userId},receiver_id.eq.${peer}),and(sender_id.eq.${peer},receiver_id.eq.${userId})`)
+        .limit(1000);
+      const list = (rows || []) as { id: string; deleted_for: string[] | null }[];
+      for (let i = 0; i < list.length; i += 25) {
+        await Promise.all(
+          list.slice(i, i + 25).map((m) =>
+            supabase
+              .from("messages")
+              .update({ deleted_for: Array.from(new Set([...(m.deleted_for || []), userId])) })
+              .eq("id", m.id),
+          ),
+        );
+      }
+    }
+  };
+
+  const runOnSelection = async (mode: "delete" | "clear") => {
+    if (!userId || busy) return;
+    setBusy(true);
+    try {
+      const dmPeers = selected.filter((k) => k.startsWith("dm:")).map((k) => k.slice(3));
+      await purgeMessagesFor(dmPeers);
+      if (mode === "delete") {
+        const others = selected.filter((k) => !k.startsWith("dm:"));
+        if (others.length) { hideChats(others); setHidden(getHiddenChats()); }
+      }
+      qc.invalidateQueries({ queryKey: ["chats", userId] });
+      toast.success(mode === "delete" ? "گفتگو حذف شد" : "تاریخچه پاک شد");
+      clearSelection();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "خطا در انجام عملیات");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleMuteSelection = () => {
+    setChatMuted(selected, !allMuted);
+    setMuted(getMutedChats());
+    toast.success(!allMuted ? "بی‌صدا شد" : "صدا فعال شد");
+    clearSelection();
+  };
+
+  const openChat = (c: ChatItem) => {
+    if (c.kind === "dm") navigate({ to: "/chats/$userId", params: { userId: c.id } });
+    else navigate({ to: "/group/$groupId", params: { groupId: c.id } });
+  };
+
   const openSearchResult = (item: SearchItem) => {
     if (item.kind === "user") navigate({ to: "/chats/$userId", params: { userId: item.id } });
     else navigate({ to: "/group/$groupId", params: { groupId: item.id } });
@@ -194,6 +277,27 @@ function ChatsList() {
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-10 bg-card/95 backdrop-blur border-b">
+        {selectionMode ? (
+          <div className="max-w-2xl mx-auto px-3 py-3 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Button size="icon" variant="ghost" onClick={clearSelection} title="لغو">
+                <X className="w-5 h-5" />
+              </Button>
+              <span className="text-sm font-semibold">{selected.length} انتخاب شده</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Button size="icon" variant="ghost" onClick={toggleMuteSelection} title={allMuted ? "فعال کردن صدا" : "بی‌صدا"}>
+                {allMuted ? <Bell className="w-5 h-5" /> : <BellOff className="w-5 h-5" />}
+              </Button>
+              <Button size="icon" variant="ghost" onClick={() => runOnSelection("clear")} disabled={busy} title="پاک کردن تاریخچه">
+                <Eraser className="w-5 h-5" />
+              </Button>
+              <Button size="icon" variant="ghost" onClick={() => runOnSelection("delete")} disabled={busy} title="حذف گفتگو">
+                {busy ? <Loader2 className="w-5 h-5 animate-spin" /> : <Trash2 className="w-5 h-5 text-destructive" />}
+              </Button>
+            </div>
+          </div>
+        ) : (
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Logo size={36} />
@@ -210,6 +314,7 @@ function ChatsList() {
             </Link>
           </div>
         </div>
+        )}
       </header>
 
       <main className="max-w-2xl mx-auto">
@@ -257,7 +362,7 @@ function ChatsList() {
             </div>
           </Link>
         )}
-        {chats.length === 0 ? (
+        {visibleChats.length === 0 ? (
           (!authReady || chatsLoading || chatsFetching) ? (
             <div className="flex flex-col items-center justify-center py-20">
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -276,25 +381,16 @@ function ChatsList() {
           )
         ) : (
           <ul className="divide-y">
-            {chats.map((c) => (
-              <li key={`${c.kind}-${c.id}`}>
-                {c.kind === "dm" ? (
-                  <Link
-                    to="/chats/$userId" params={{ userId: c.id }}
-                    className="flex items-center gap-3 px-4 py-3 hover:bg-accent/50 transition"
-                  >
-                    <UserAvatar avatarPath={c.avatar} name={c.name} verified={c.verified} className="w-12 h-12" />
-                    <ChatRowBody c={c} />
-                  </Link>
-                ) : (
-                  <Link
-                    to="/group/$groupId" params={{ groupId: c.id }}
-                    className="flex items-center gap-3 px-4 py-3 hover:bg-accent/50 transition"
-                  >
-                    <UserAvatar avatarPath={c.avatar} name={c.name} className="w-12 h-12" />
-                    <ChatRowBody c={c} />
-                  </Link>
-                )}
+            {visibleChats.map((c) => (
+              <li key={keyOf(c)}>
+                <ChatRow
+                  c={c}
+                  muted={muted.includes(keyOf(c))}
+                  selected={selected.includes(keyOf(c))}
+                  selectionMode={selectionMode}
+                  onOpen={() => openChat(c)}
+                  onToggle={() => toggleSelect(keyOf(c))}
+                />
               </li>
             ))}
           </ul>
@@ -306,6 +402,62 @@ function ChatsList() {
           <MessageCirclePlus className="w-6 h-6" />
         </Button>
       </Link>
+    </div>
+  );
+}
+
+function ChatRow({
+  c, muted, selected, selectionMode, onOpen, onToggle,
+}: {
+  c: ChatItem; muted: boolean; selected: boolean; selectionMode: boolean;
+  onOpen: () => void; onToggle: () => void;
+}) {
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longRef = useRef(false);
+
+  const start = () => {
+    longRef.current = false;
+    timerRef.current = setTimeout(() => { longRef.current = true; onToggle(); }, 450);
+  };
+  const cancel = () => {
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+  };
+  const click = () => {
+    cancel();
+    if (longRef.current) { longRef.current = false; return; }
+    if (selectionMode) onToggle();
+    else onOpen();
+  };
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onPointerDown={start}
+      onPointerUp={cancel}
+      onPointerLeave={cancel}
+      onPointerCancel={cancel}
+      onContextMenu={(e) => { e.preventDefault(); onToggle(); }}
+      onClick={click}
+      onKeyDown={(e) => { if (e.key === "Enter") click(); }}
+      className={`flex items-center gap-3 px-4 py-3 transition cursor-pointer select-none ${
+        selected ? "bg-primary/10" : "hover:bg-accent/50"
+      }`}
+    >
+      <div className="relative shrink-0">
+        <UserAvatar
+          avatarPath={c.avatar} name={c.name}
+          verified={c.kind === "dm" ? c.verified : false}
+          className="w-12 h-12"
+        />
+        {selected && (
+          <span className="absolute -bottom-0.5 -left-0.5 w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center">
+            <Check className="w-3 h-3" />
+          </span>
+        )}
+      </div>
+      <ChatRowBody c={c} />
+      {muted && <BellOff className="w-4 h-4 text-muted-foreground shrink-0" />}
     </div>
   );
 }
