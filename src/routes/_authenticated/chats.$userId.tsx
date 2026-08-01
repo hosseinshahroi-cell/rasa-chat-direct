@@ -105,6 +105,7 @@ function ChatView() {
         .eq("id", otherId)
         .maybeSingle();
       if (error) throw error;
+      if (data) writeSnapshot(`profile:${otherId}`, data);
       return data;
     },
   });
