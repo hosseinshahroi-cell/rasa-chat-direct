@@ -4,20 +4,27 @@ import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/UserAvatar";
-import { PhoneOff, Mic, MicOff, Volume2, ArrowRight, Loader2 } from "lucide-react";
+import {
+  PhoneOff, Mic, MicOff, Volume2, ArrowRight, Loader2,
+  Video, VideoOff, SwitchCamera,
+} from "lucide-react";
 import { toast } from "sonner";
 import { getAgoraToken } from "@/lib/agora.functions";
 import AgoraRTC, {
   type IAgoraRTCClient,
   type IMicrophoneAudioTrack,
+  type ICameraVideoTrack,
   type IAgoraRTCRemoteUser,
 } from "agora-rtc-sdk-ng";
 
-interface CallSearch { incoming?: string }
+interface CallSearch { incoming?: string; video?: string }
 
 export const Route = createFileRoute("/_authenticated/call/$userId")({
-  head: () => ({ meta: [{ title: "تماس صوتی - رسا" }] }),
-  validateSearch: (s: Record<string, unknown>): CallSearch => ({ incoming: s.incoming ? String(s.incoming) : undefined }),
+  head: () => ({ meta: [{ title: "تماس - رسا" }] }),
+  validateSearch: (s: Record<string, unknown>): CallSearch => ({
+    incoming: s.incoming ? String(s.incoming) : undefined,
+    video: s.video ? String(s.video) : undefined,
+  }),
   component: CallView,
 });
 
@@ -33,22 +40,29 @@ function uuidToUid(uuid: string): number {
 
 function CallView() {
   const { userId: peerId } = Route.useParams();
-  const { incoming } = useSearch({ from: "/_authenticated/call/$userId" });
+  const { incoming, video } = useSearch({ from: "/_authenticated/call/$userId" });
+  const isVideoCall = video === "1";
   const navigate = useNavigate();
   const fetchToken = useServerFn(getAgoraToken);
   const [me, setMe] = useState<string | null>(null);
   const [peer, setPeer] = useState<{ username: string; display_name: string | null; avatar_url: string | null } | null>(null);
   const [status, setStatus] = useState<"init" | "calling" | "ringing" | "connected" | "ended">("init");
   const [muted, setMuted] = useState(false);
+  const [camOn, setCamOn] = useState(isVideoCall);
+  const [remoteVideoOn, setRemoteVideoOn] = useState(false);
   const [seconds, setSeconds] = useState(0);
 
   const clientRef = useRef<IAgoraRTCClient | null>(null);
   const micRef = useRef<IMicrophoneAudioTrack | null>(null);
+  const camRef = useRef<ICameraVideoTrack | null>(null);
+  const localVideoRef = useRef<HTMLDivElement | null>(null);
+  const remoteVideoRef = useRef<HTMLDivElement | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const callIdRef = useRef<string>(incoming || crypto.randomUUID());
   const isCallerRef = useRef<boolean>(!incoming);
   const endedRef = useRef(false);
   const secondsRef = useRef(0);
+  const facingRef = useRef<"user" | "environment">("user");
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setMe(data.user?.id ?? null));
@@ -91,9 +105,17 @@ function CallView() {
         client.on("user-published", async (user: IAgoraRTCRemoteUser, mediaType) => {
           await client.subscribe(user, mediaType);
           if (mediaType === "audio") user.audioTrack?.play();
+          if (mediaType === "video") {
+            setRemoteVideoOn(true);
+            setTimeout(() => {
+              if (remoteVideoRef.current) user.videoTrack?.play(remoteVideoRef.current, { fit: "cover" });
+            }, 60);
+          }
           setStatus("connected");
         });
-        client.on("user-unpublished", () => { /* peer muted */ });
+        client.on("user-unpublished", (_u, mediaType) => {
+          if (mediaType === "video") setRemoteVideoOn(false);
+        });
         client.on("user-left", () => {
           if (!endedRef.current) { endedRef.current = true; setStatus("ended"); }
         });
@@ -108,18 +130,35 @@ function CallView() {
           AGC: true,
         });
         micRef.current = mic;
-        await client.publish([mic]);
+        const tracks: (IMicrophoneAudioTrack | ICameraVideoTrack)[] = [mic];
+        if (isVideoCall) {
+          try {
+            const cam = await AgoraRTC.createCameraVideoTrack({
+              encoderConfig: "720p_2",
+              facingMode: facingRef.current,
+            });
+            camRef.current = cam;
+            tracks.push(cam);
+            setCamOn(true);
+            setTimeout(() => {
+              if (localVideoRef.current) cam.play(localVideoRef.current, { fit: "cover", mirror: true });
+            }, 60);
+          } catch {
+            toast.error("دسترسی به دوربین داده نشد");
+            setCamOn(false);
+          }
+        }
+        await client.publish(tracks);
         if (client.remoteUsers.length > 0) setStatus("connected");
       } catch (err) {
         console.error("agora join error", err);
         const msg = err instanceof Error ? err.message : String(err);
-        toast.error(`خطا در تماس صوتی: ${msg}`);
+        toast.error(`خطا در تماس: ${msg}`);
         if (!endedRef.current) { endedRef.current = true; setStatus("ended"); }
       }
     };
 
     (async () => {
-      // check mic permission upfront (nice error)
       try {
         const s = await navigator.mediaDevices.getUserMedia({ audio: true });
         s.getTracks().forEach((t) => t.stop());
@@ -129,7 +168,6 @@ function CallView() {
         return;
       }
 
-      // set up signaling channel for offer/answer/hangup
       const ch = supabase
         .channel(`call-${callIdRef.current}-${me}`)
         .on(
@@ -149,8 +187,8 @@ function CallView() {
           if (subStatus !== "SUBSCRIBED" || cancelled) return;
           if (isCallerRef.current) {
             setStatus("calling");
-            await sendSignal("offer", { channel: callIdRef.current });
-            await sendSystemMessage("📞 تماس صوتی شروع شد");
+            await sendSignal("offer", { channel: callIdRef.current, video: isVideoCall });
+            await sendSystemMessage(isVideoCall ? "🎥 تماس تصویری شروع شد" : "📞 تماس صوتی شروع شد");
           } else {
             setStatus("ringing");
             await sendSignal("answer", { channel: callIdRef.current });
@@ -165,11 +203,8 @@ function CallView() {
       const durationSec = secondsRef.current;
       (async () => {
         try {
-          if (micRef.current) {
-            micRef.current.stop();
-            micRef.current.close();
-            micRef.current = null;
-          }
+          if (micRef.current) { micRef.current.stop(); micRef.current.close(); micRef.current = null; }
+          if (camRef.current) { camRef.current.stop(); camRef.current.close(); camRef.current = null; }
           if (clientRef.current) {
             await clientRef.current.leave();
             clientRef.current.removeAllListeners();
@@ -181,19 +216,61 @@ function CallView() {
         if (isCallerRef.current) {
           const m = Math.floor(durationSec / 60);
           const s = durationSec % 60;
+          const kind = isVideoCall ? "🎥 تماس تصویری" : "📞 تماس صوتی";
           const label = durationSec > 0
-            ? `📞 تماس صوتی پایان یافت • مدت ${m}:${String(s).padStart(2, "0")}`
-            : "📞 تماس صوتی بدون پاسخ";
+            ? `${kind} پایان یافت • مدت ${m}:${String(s).padStart(2, "0")}`
+            : `${kind} بدون پاسخ`;
           try { await sendSystemMessage(label); } catch { /* noop */ }
         }
       })();
     };
-  }, [me, peerId, navigate, fetchToken]);
+  }, [me, peerId, navigate, fetchToken, isVideoCall]);
 
   const toggleMute = () => {
     const next = !muted;
     micRef.current?.setEnabled(!next);
     setMuted(next);
+  };
+
+  const toggleCam = async () => {
+    const client = clientRef.current;
+    if (!client) return;
+    if (camRef.current) {
+      const next = !camOn;
+      await camRef.current.setEnabled(next);
+      setCamOn(next);
+      if (next && localVideoRef.current) camRef.current.play(localVideoRef.current, { fit: "cover", mirror: true });
+      return;
+    }
+    try {
+      const cam = await AgoraRTC.createCameraVideoTrack({
+        encoderConfig: "720p_2",
+        facingMode: facingRef.current,
+      });
+      camRef.current = cam;
+      await client.publish([cam]);
+      setCamOn(true);
+      setTimeout(() => {
+        if (localVideoRef.current) cam.play(localVideoRef.current, { fit: "cover", mirror: true });
+      }, 60);
+    } catch {
+      toast.error("دسترسی به دوربین داده نشد");
+    }
+  };
+
+  const switchCamera = async () => {
+    const cam = camRef.current;
+    if (!cam) return;
+    try {
+      const cams = await AgoraRTC.getCameras();
+      if (cams.length < 2) { toast("دوربین دیگری یافت نشد"); return; }
+      const current = cam.getMediaStreamTrack().getSettings().deviceId;
+      const next = cams.find((c) => c.deviceId !== current) ?? cams[0];
+      await cam.setDevice(next.deviceId);
+      facingRef.current = facingRef.current === "user" ? "environment" : "user";
+    } catch {
+      toast.error("تعویض دوربین ممکن نشد");
+    }
   };
 
   const hangup = () => {
@@ -203,40 +280,72 @@ function CallView() {
   };
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  const showRemoteVideo = isVideoCall && remoteVideoOn && status === "connected";
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-primary/20 via-background to-background flex flex-col">
-      <header className="px-3 py-2.5 flex items-center gap-2">
+    <div className="min-h-screen bg-gradient-to-b from-primary/20 via-background to-background flex flex-col relative overflow-hidden">
+      {/* remote video fills the screen when available */}
+      <div
+        ref={remoteVideoRef}
+        className={`absolute inset-0 bg-black ${showRemoteVideo ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+      />
+
+      <header className="px-3 py-2.5 flex items-center gap-2 relative z-10">
         <Link to="/chats/$userId" params={{ userId: peerId }}>
           <Button size="icon" variant="ghost"><ArrowRight className="w-5 h-5" /></Button>
         </Link>
       </header>
 
-      <main className="flex-1 flex flex-col items-center justify-center gap-6 px-6">
-        <div className="relative">
-          <div className="absolute inset-0 rounded-full bg-primary/30 animate-ping" style={{ animationDuration: status === "connected" ? "0s" : "2s" }} />
-          <UserAvatar avatarPath={peer?.avatar_url ?? null} name={peer?.display_name || peer?.username || "..."} className="w-32 h-32 relative" />
-        </div>
-        <div className="text-center">
-          <h2 className="text-2xl font-bold">{peer?.display_name || peer?.username || "..."}</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            {status === "calling" && "در حال تماس..."}
-            {status === "ringing" && "در حال اتصال..."}
-            {status === "connected" && (
-              <span className="flex items-center justify-center gap-1.5 text-primary">
-                <Volume2 className="w-4 h-4" /> {fmt(seconds)}
-              </span>
-            )}
-            {status === "ended" && "تماس پایان یافت"}
-            {status === "init" && <Loader2 className="w-4 h-4 animate-spin inline" />}
-          </p>
-        </div>
+      <main className="flex-1 flex flex-col items-center justify-center gap-6 px-6 relative z-10">
+        {!showRemoteVideo && (
+          <>
+            <div className="relative">
+              <div className="absolute inset-0 rounded-full bg-primary/30 animate-ping" style={{ animationDuration: status === "connected" ? "0s" : "2s" }} />
+              <UserAvatar avatarPath={peer?.avatar_url ?? null} name={peer?.display_name || peer?.username || "..."} className="w-32 h-32 relative" />
+            </div>
+            <div className="text-center">
+              <h2 className="text-2xl font-bold">{peer?.display_name || peer?.username || "..."}</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                {status === "calling" && (isVideoCall ? "در حال تماس تصویری..." : "در حال تماس...")}
+                {status === "ringing" && "در حال اتصال..."}
+                {status === "connected" && (
+                  <span className="flex items-center justify-center gap-1.5 text-primary">
+                    <Volume2 className="w-4 h-4" /> {fmt(seconds)}
+                  </span>
+                )}
+                {status === "ended" && "تماس پایان یافت"}
+                {status === "init" && <Loader2 className="w-4 h-4 animate-spin inline" />}
+              </p>
+            </div>
+          </>
+        )}
+        {showRemoteVideo && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-3 py-1 text-xs text-white">
+            {peer?.display_name || peer?.username} • {fmt(seconds)}
+          </div>
+        )}
       </main>
 
-      <footer className="pb-10 pt-4 flex items-center justify-center gap-6">
+      {/* local preview */}
+      <div
+        ref={localVideoRef}
+        className={`absolute top-16 left-3 w-28 h-44 rounded-2xl overflow-hidden bg-black/60 border border-white/20 z-20 ${
+          isVideoCall && camOn ? "opacity-100" : "opacity-0 pointer-events-none"
+        }`}
+      />
+
+      <footer className="pb-10 pt-4 flex items-center justify-center gap-4 relative z-10">
         <Button onClick={toggleMute} variant={muted ? "destructive" : "secondary"} size="lg" className="rounded-full w-14 h-14 p-0">
           {muted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
         </Button>
+        <Button onClick={toggleCam} variant={camOn ? "secondary" : "outline"} size="lg" className="rounded-full w-14 h-14 p-0" title="دوربین">
+          {camOn ? <Video className="w-6 h-6" /> : <VideoOff className="w-6 h-6" />}
+        </Button>
+        {camOn && (
+          <Button onClick={switchCamera} variant="secondary" size="lg" className="rounded-full w-14 h-14 p-0" title="تعویض دوربین">
+            <SwitchCamera className="w-6 h-6" />
+          </Button>
+        )}
         <Button onClick={hangup} variant="destructive" size="lg" className="rounded-full w-16 h-16 p-0">
           <PhoneOff className="w-7 h-7" />
         </Button>
