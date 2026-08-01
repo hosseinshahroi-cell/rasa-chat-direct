@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
+import { isChatMuted } from "@/lib/cache";
 
 export function NotificationListener() {
   const queryClient = useQueryClient();
@@ -25,6 +26,7 @@ export function NotificationListener() {
             queryClient.invalidateQueries({ queryKey: ["messages"] });
 
             const msg = payload.new as { sender_id: string; content: string | null };
+            if (isChatMuted(`dm:${msg.sender_id}`)) return;
             if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
               try {
                 const { data: sender } = await supabase

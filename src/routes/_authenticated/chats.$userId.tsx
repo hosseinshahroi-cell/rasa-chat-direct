@@ -25,6 +25,7 @@ import { ReportDialog } from "@/components/ReportDialog";
 import { ForwardDialog } from "@/components/ForwardDialog";
 import { MessageText } from "@/components/MessageText";
 import { FileAttachment } from "@/components/FileAttachment";
+import { readSnapshot, writeSnapshot } from "@/lib/cache";
 
 const REACTION_EMOJIS = ["❤️", "👍", "👎", "😂", "😮", "😢", "🔥", "🙏"];
 
@@ -95,6 +96,8 @@ function ChatView() {
     queryKey: ["profile", otherId],
     enabled: !isSelf,
     refetchInterval: 30000,
+    initialData: () => readSnapshot<never>(`profile:${otherId}`),
+    initialDataUpdatedAt: 0,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
@@ -102,6 +105,7 @@ function ChatView() {
         .eq("id", otherId)
         .maybeSingle();
       if (error) throw error;
+      if (data) writeSnapshot(`profile:${otherId}`, data);
       return data;
     },
   });
@@ -122,6 +126,8 @@ function ChatView() {
   const { data: messages = [] } = useQuery<Message[]>({
     queryKey: ["messages", me, otherId],
     enabled: !!me,
+    initialData: () => (me ? readSnapshot<Message[]>(`messages:${me}:${otherId}`) : undefined),
+    initialDataUpdatedAt: 0,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("messages")
@@ -130,7 +136,9 @@ function ChatView() {
         .order("created_at", { ascending: true })
         .limit(500);
       if (error) throw error;
-      return (data as Message[]).filter((m) => !(m.deleted_for || []).includes(me!));
+      const list = (data as Message[]).filter((m) => !(m.deleted_for || []).includes(me!));
+      writeSnapshot(`messages:${me}:${otherId}`, list);
+      return list;
     },
   });
 
