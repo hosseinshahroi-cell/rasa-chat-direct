@@ -4,13 +4,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/UserAvatar";
-import { Phone, PhoneOff } from "lucide-react";
+import { Phone, PhoneOff, Video } from "lucide-react";
 
 interface IncomingCall {
   callId: string;
   fromUser: string;
   fromName: string;
   fromAvatar: string | null;
+  isVideo: boolean;
 }
 
 export function IncomingCallListener() {
@@ -31,7 +32,7 @@ export function IncomingCallListener() {
           "postgres_changes",
           { event: "INSERT", schema: "public", table: "call_signals", filter: `to_user=eq.${me}` },
           async (payload) => {
-            const sig = payload.new as { kind: string; call_id: string; from_user: string };
+            const sig = payload.new as { kind: string; call_id: string; from_user: string; payload: { video?: boolean } | null };
             if (sig.kind !== "offer") return;
             // skip if already on call page for this caller
             if (window.location.pathname.startsWith("/call/")) return;
@@ -44,6 +45,7 @@ export function IncomingCallListener() {
               fromUser: sig.from_user,
               fromName: p?.display_name || p?.username || "ناشناس",
               fromAvatar: p?.avatar_url ?? null,
+              isVideo: sig.payload?.video === true,
             });
           }
         )
@@ -51,7 +53,7 @@ export function IncomingCallListener() {
           if (status !== "SUBSCRIBED" || cancelled) return;
           const { data: recent } = await supabase
             .from("call_signals")
-            .select("call_id, from_user, created_at")
+            .select("call_id, from_user, created_at, payload")
             .eq("to_user", me)
             .eq("kind", "offer")
             .gt("created_at", new Date(Date.now() - 45000).toISOString())
@@ -68,6 +70,7 @@ export function IncomingCallListener() {
             fromUser: recent.from_user,
             fromName: p?.display_name || p?.username || "ناشناس",
             fromAvatar: p?.avatar_url ?? null,
+            isVideo: (recent.payload as { video?: boolean } | null)?.video === true,
           });
         });
       if (cancelled) { supabase.removeChannel(ch); return; }
@@ -89,9 +92,9 @@ export function IncomingCallListener() {
 
   const accept = async () => {
     if (!incoming) return;
-    const cid = incoming.callId; const from = incoming.fromUser;
+    const cid = incoming.callId; const from = incoming.fromUser; const vid = incoming.isVideo;
     setIncoming(null);
-    navigate({ to: "/call/$userId", params: { userId: from }, search: { incoming: cid } as never });
+    navigate({ to: "/call/$userId", params: { userId: from }, search: { incoming: cid, ...(vid ? { video: "1" } : {}) } as never });
   };
 
   const reject = async () => {
@@ -114,14 +117,14 @@ export function IncomingCallListener() {
           <UserAvatar avatarPath={incoming.fromAvatar} name={incoming.fromName} className="w-20 h-20" />
           <div>
             <p className="font-semibold">{incoming.fromName}</p>
-            <p className="text-xs text-muted-foreground">تماس صوتی ورودی...</p>
+            <p className="text-xs text-muted-foreground">{incoming.isVideo ? "تماس تصویری ورودی..." : "تماس صوتی ورودی..."}</p>
           </div>
           <div className="flex gap-3 mt-2">
             <Button onClick={reject} variant="destructive" size="lg" className="rounded-full w-14 h-14 p-0">
               <PhoneOff className="w-6 h-6" />
             </Button>
             <Button onClick={accept} size="lg" className="rounded-full w-14 h-14 p-0 bg-green-600 hover:bg-green-700">
-              <Phone className="w-6 h-6" />
+              {incoming.isVideo ? <Video className="w-6 h-6" /> : <Phone className="w-6 h-6" />}
             </Button>
           </div>
         </div>
