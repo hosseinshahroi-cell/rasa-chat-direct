@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { readSnapshot, writeSnapshot } from "@/lib/cache";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -83,6 +84,8 @@ function GroupView() {
   const { data: messages = [] } = useQuery<GroupMsg[]>({
     queryKey: ["group-messages", groupId],
     enabled: !!me,
+    initialData: () => readSnapshot<GroupMsg[]>(`group-messages:${groupId}`),
+    initialDataUpdatedAt: 0,
     queryFn: async () => {
       const { data, error } = await supabase.from("messages")
         .select("id, sender_id, group_id, content, attachment_url, attachment_type, created_at, deleted_for_everyone")
@@ -90,7 +93,9 @@ function GroupView() {
         .order("created_at", { ascending: true })
         .limit(500);
       if (error) throw error;
-      return (data || []) as GroupMsg[];
+      const list = (data || []) as GroupMsg[];
+      writeSnapshot(`group-messages:${groupId}`, list);
+      return list;
     },
   });
 
