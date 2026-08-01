@@ -8,7 +8,7 @@ import { UserAvatar } from "@/components/UserAvatar";
 import {
   ArrowRight, Send, Paperclip, Image as ImageIcon, Mic, StopCircle, Loader2,
   Bookmark, BadgeCheck, Reply, Pin, Trash2, Pencil, X, Download, Check, CheckCheck, PinOff,
-  MoreVertical, Flag, ShieldAlert, Megaphone, Copy as CopyIcon, Forward, Phone, User as UserIcon,
+  MoreVertical, Flag, ShieldAlert, Megaphone, Copy as CopyIcon, Forward, Phone, Video as VideoIcon, User as UserIcon,
 } from "lucide-react";
 import { formatChatTime, formatLastSeen } from "@/lib/format";
 import { toast } from "sonner";
@@ -503,6 +503,9 @@ function ChatView() {
                   </div>
                 </div>
               )}
+              <Link to="/call/$userId" params={{ userId: otherId }} search={{ video: "1" } as never}>
+                <Button size="icon" variant="ghost" title="تماس تصویری"><VideoIcon className="w-5 h-5 text-primary" /></Button>
+              </Link>
               <Link to="/call/$userId" params={{ userId: otherId }}>
                 <Button size="icon" variant="ghost" title="تماس صوتی"><Phone className="w-5 h-5 text-primary" /></Button>
               </Link>
