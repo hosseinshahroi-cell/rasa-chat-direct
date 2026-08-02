@@ -102,7 +102,22 @@ function ChatView() {
     queryKey: ["profile", otherId],
     enabled: !isSelf,
     refetchInterval: 30000,
-    initialData: () => readSnapshot<never>(`profile:${otherId}`),
+    initialData: () => {
+      const snap = readSnapshot<never>(`profile:${otherId}`);
+      if (snap) return snap;
+      // fall back to the row we already have in the chat-list snapshot
+      const uid = getCachedUserId();
+      const list = uid
+        ? readSnapshot<Array<{ kind: string; id: string; name: string; avatar: string | null; verified: boolean }>>(`chats:${uid}`)
+        : undefined;
+      const row = list?.find((c) => c.kind === "dm" && c.id === otherId);
+      if (!row) return undefined;
+      return {
+        id: otherId, username: row.name, display_name: row.name,
+        avatar_url: row.avatar, is_verified: row.verified,
+        is_scammer: false, last_seen_at: null,
+      } as never;
+    },
     initialDataUpdatedAt: 0,
     queryFn: async () => {
       const { data, error } = await supabase
