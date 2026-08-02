@@ -190,6 +190,34 @@ function ChatsList() {
     void preloadAvatars(chats.map((c) => c.avatar));
   }, [chats]);
 
+  // preload the most recent conversations so opening them is instant
+  useEffect(() => {
+    if (!userId || !chats.length) return;
+    const recentDms = chats.filter((c) => c.kind === "dm").slice(0, 5);
+    for (const c of recentDms) {
+      void qc.prefetchQuery({
+        queryKey: ["messages", userId, c.id],
+        staleTime: 15_000,
+        queryFn: async () => {
+          const { data, error } = await supabase
+            .from("messages")
+            .select("*")
+            .or(`and(sender_id.eq.${userId},receiver_id.eq.${c.id}),and(sender_id.eq.${c.id},receiver_id.eq.${userId})`)
+            .order("created_at", { ascending: true })
+            .limit(500);
+          if (error) throw error;
+          const list = (data || []).filter(
+            (m: { deleted_for: string[] | null }) => !(m.deleted_for || []).includes(userId),
+          );
+          writeSnapshot(`messages:${userId}:${c.id}`, list);
+          return list;
+        },
+      });
+    }
+  }, [chats, userId, qc]);
+
+
+
 
   const { data: searchResults = [], isFetching: searching } = useQuery<SearchItem[]>({
     queryKey: ["global-search", search],
