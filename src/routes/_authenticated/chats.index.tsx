@@ -115,17 +115,20 @@ function ChatsList() {
     queryFn: async () => {
       if (!userId) return [];
 
-      // 1) Direct messages
-      const { data: msgs, error } = await supabase
-        .from("messages")
-        .select("id, sender_id, receiver_id, group_id, content, attachment_type, read_at, created_at, deleted_for_everyone, deleted_for")
-        .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
-        .is("group_id", null)
-        .order("created_at", { ascending: false })
-        .limit(500);
-      if (error) throw error;
+      // direct messages + groups in parallel
+      const [msgRes, groupRes] = await Promise.all([
+        supabase
+          .from("messages")
+          .select("id, sender_id, receiver_id, content, attachment_type, read_at, created_at, deleted_for_everyone, deleted_for")
+          .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
+          .is("group_id", null)
+          .order("created_at", { ascending: false })
+          .limit(400),
+        supabase.rpc("my_groups"),
+      ]);
+      if (msgRes.error) throw msgRes.error;
 
-      const filtered = (msgs ?? []).filter(
+      const filtered = (msgRes.data ?? []).filter(
         (m: { deleted_for: string[] | null; receiver_id: string | null }) =>
           m.receiver_id !== null && !(m.deleted_for || []).includes(userId)
       );
@@ -163,9 +166,7 @@ function ChatsList() {
         }
       }
 
-      // 2) Groups
-      const { data: groups } = await supabase.rpc("my_groups");
-      const groupItems: ChatItem[] = ((groups || []) as Array<{
+      const groupItems: ChatItem[] = ((groupRes.data || []) as Array<{
         id: string; name: string; avatar_url: string | null;
         member_count: number; last_msg_at: string | null; is_channel?: boolean;
       }>).map((g) => ({
@@ -181,6 +182,13 @@ function ChatsList() {
       return result;
     },
   });
+
+  // warm every avatar (batch-signed) so pictures never pop in late
+  useEffect(() => {
+    if (!chats.length) return;
+    void preloadAvatars(chats.map((c) => c.avatar));
+  }, [chats]);
+
 
   const { data: searchResults = [], isFetching: searching } = useQuery<SearchItem[]>({
     queryKey: ["global-search", search],
