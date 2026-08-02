@@ -284,7 +284,20 @@ function ChatsList() {
                 <X className="w-5 h-5" />
               </Button>
               <span className="text-sm font-semibold">{selected.length} انتخاب شده</span>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-xs"
+                onClick={() =>
+                  setSelected(
+                    selected.length === visibleChats.length ? [] : visibleChats.map(keyOf),
+                  )
+                }
+              >
+                {selected.length === visibleChats.length ? "لغو همه" : "انتخاب همه"}
+              </Button>
             </div>
+
             <div className="flex items-center gap-1">
               <Button size="icon" variant="ghost" onClick={toggleMuteSelection} title={allMuted ? "فعال کردن صدا" : "بی‌صدا"}>
                 {allMuted ? <Bell className="w-5 h-5" /> : <BellOff className="w-5 h-5" />}
