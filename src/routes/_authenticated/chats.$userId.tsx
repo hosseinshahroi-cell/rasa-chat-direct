@@ -82,8 +82,13 @@ function ChatView() {
   const isSelf = me === otherId;
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setMe(data.user?.id ?? null));
+    supabase.auth.getUser().then(({ data }) => {
+      const id = data.user?.id ?? null;
+      setCachedUserId(id);
+      setMe((cur) => (cur === id ? cur : id));
+    });
   }, []);
+
 
   // last-seen heartbeat
   useEffect(() => {
