@@ -99,7 +99,19 @@ function CallView() {
       try {
         const uid = uuidToUid(me);
         const channel = callIdRef.current;
-        const { appId, token } = await fetchToken({ data: { channel, uid } });
+        // fetch token + open mic in parallel to cut startup latency
+        const [tokenRes, mic] = await Promise.all([
+          fetchToken({ data: { channel, uid } }),
+          AgoraRTC.createMicrophoneAudioTrack({
+            encoderConfig: "speech_standard",
+            AEC: true,
+            ANS: true,
+            AGC: true,
+          }),
+        ]);
+        if (cancelled) { mic.stop(); mic.close(); return; }
+        micRef.current = mic;
+        const { appId, token } = tokenRes;
         const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
         clientRef.current = client;
         client.on("user-published", async (user: IAgoraRTCRemoteUser, mediaType) => {
@@ -116,6 +128,7 @@ function CallView() {
         client.on("user-unpublished", (_u, mediaType) => {
           if (mediaType === "video") setRemoteVideoOn(false);
         });
+        client.on("user-joined", () => setStatus("connected"));
         client.on("user-left", () => {
           if (!endedRef.current) { endedRef.current = true; setStatus("ended"); }
         });
@@ -123,23 +136,20 @@ function CallView() {
           if (cur === "DISCONNECTED" && !endedRef.current) { endedRef.current = true; setStatus("ended"); }
         });
         await client.join(appId, channel, token, uid);
-        const mic = await AgoraRTC.createMicrophoneAudioTrack({
-          encoderConfig: "speech_standard",
-          AEC: true,
-          ANS: true,
-          AGC: true,
-        });
-        micRef.current = mic;
-        const tracks: (IMicrophoneAudioTrack | ICameraVideoTrack)[] = [mic];
+        if (cancelled) return;
+        // publish audio first so voice works instantly, camera follows
+        await client.publish([mic]);
+        if (client.remoteUsers.length > 0) setStatus("connected");
         if (isVideoCall) {
           try {
             const cam = await AgoraRTC.createCameraVideoTrack({
               encoderConfig: "720p_2",
               facingMode: facingRef.current,
             });
+            if (cancelled) { cam.stop(); cam.close(); return; }
             camRef.current = cam;
-            tracks.push(cam);
             setCamOn(true);
+            await client.publish([cam]);
             setTimeout(() => {
               if (localVideoRef.current) cam.play(localVideoRef.current, { fit: "cover", mirror: true });
             }, 60);
@@ -148,8 +158,6 @@ function CallView() {
             setCamOn(false);
           }
         }
-        await client.publish(tracks);
-        if (client.remoteUsers.length > 0) setStatus("connected");
       } catch (err) {
         console.error("agora join error", err);
         const msg = err instanceof Error ? err.message : String(err);
@@ -159,14 +167,9 @@ function CallView() {
     };
 
     (async () => {
-      try {
-        const s = await navigator.mediaDevices.getUserMedia({ audio: true });
-        s.getTracks().forEach((t) => t.stop());
-      } catch {
-        toast.error("دسترسی به میکروفون داده نشد");
-        navigate({ to: "/chats/$userId", params: { userId: peerId } });
-        return;
-      }
+      // start media + agora right away; signaling runs in parallel
+      setStatus(isCallerRef.current ? "calling" : "ringing");
+      const joining = joinAgora();
 
       const ch = supabase
         .channel(`call-${callIdRef.current}-${me}`)
@@ -186,17 +189,16 @@ function CallView() {
         .subscribe(async (subStatus) => {
           if (subStatus !== "SUBSCRIBED" || cancelled) return;
           if (isCallerRef.current) {
-            setStatus("calling");
             await sendSignal("offer", { channel: callIdRef.current, video: isVideoCall });
             await sendSystemMessage(isVideoCall ? "🎥 تماس تصویری شروع شد" : "📞 تماس صوتی شروع شد");
           } else {
-            setStatus("ringing");
             await sendSignal("answer", { channel: callIdRef.current });
           }
-          await joinAgora();
         });
       channelRef.current = ch;
+      await joining;
     })();
+
 
     return () => {
       cancelled = true;
