@@ -591,11 +591,24 @@ function ChatView() {
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-3 py-4 space-y-2">
-          {messages.length === 0 && (
+          {messages.length === 0 && (messagesLoading || messagesFetching) && (
+            <div className="space-y-3 py-4">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className={`flex ${i % 2 ? "justify-start" : "justify-end"}`}>
+                  <div
+                    className="h-10 rounded-2xl bg-muted animate-pulse"
+                    style={{ width: `${45 + ((i * 13) % 35)}%` }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+          {messages.length === 0 && !messagesLoading && !messagesFetching && (
             <div className="text-center text-sm text-muted-foreground py-12">
               شروع گفتگو با ارسال پیام
             </div>
           )}
+
           {messages.map((m) => {
             const mine = m.sender_id === me;
             const signed = m.attachment_url ? signedAttachments[m.attachment_url] : null;
