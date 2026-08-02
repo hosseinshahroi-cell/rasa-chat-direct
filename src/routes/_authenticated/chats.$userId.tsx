@@ -25,7 +25,7 @@ import { ReportDialog } from "@/components/ReportDialog";
 import { ForwardDialog } from "@/components/ForwardDialog";
 import { MessageText } from "@/components/MessageText";
 import { FileAttachment } from "@/components/FileAttachment";
-import { readSnapshot, writeSnapshot } from "@/lib/cache";
+import { readSnapshot, writeSnapshot, getCachedUserId, setCachedUserId } from "@/lib/cache";
 
 const REACTION_EMOJIS = ["❤️", "👍", "👎", "😂", "😮", "😢", "🔥", "🙏"];
 
@@ -57,7 +57,8 @@ function ChatView() {
   const { userId: otherId } = Route.useParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const [me, setMe] = useState<string | null>(null);
+  // seeded synchronously so cached messages paint on the very first render
+  const [me, setMe] = useState<string | null>(() => getCachedUserId());
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -81,8 +82,13 @@ function ChatView() {
   const isSelf = me === otherId;
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setMe(data.user?.id ?? null));
+    supabase.auth.getUser().then(({ data }) => {
+      const id = data.user?.id ?? null;
+      setCachedUserId(id);
+      setMe((cur) => (cur === id ? cur : id));
+    });
   }, []);
+
 
   // last-seen heartbeat
   useEffect(() => {
@@ -96,7 +102,22 @@ function ChatView() {
     queryKey: ["profile", otherId],
     enabled: !isSelf,
     refetchInterval: 30000,
-    initialData: () => readSnapshot<never>(`profile:${otherId}`),
+    initialData: () => {
+      const snap = readSnapshot<never>(`profile:${otherId}`);
+      if (snap) return snap;
+      // fall back to the row we already have in the chat-list snapshot
+      const uid = getCachedUserId();
+      const list = uid
+        ? readSnapshot<Array<{ kind: string; id: string; name: string; avatar: string | null; verified: boolean }>>(`chats:${uid}`)
+        : undefined;
+      const row = list?.find((c) => c.kind === "dm" && c.id === otherId);
+      if (!row) return undefined;
+      return {
+        id: otherId, username: row.name, display_name: row.name,
+        avatar_url: row.avatar, is_verified: row.verified,
+        is_scammer: false, last_seen_at: null,
+      } as never;
+    },
     initialDataUpdatedAt: 0,
     queryFn: async () => {
       const { data, error } = await supabase
@@ -123,9 +144,14 @@ function ChatView() {
         ? "آنلاین"
         : formatLastSeen(other?.last_seen_at);
 
-  const { data: messages = [] } = useQuery<Message[]>({
+  const {
+    data: messages = [],
+    isLoading: messagesLoading,
+    isFetching: messagesFetching,
+  } = useQuery<Message[]>({
     queryKey: ["messages", me, otherId],
     enabled: !!me,
+    staleTime: 5_000,
     initialData: () => (me ? readSnapshot<Message[]>(`messages:${me}:${otherId}`) : undefined),
     initialDataUpdatedAt: 0,
     queryFn: async () => {
@@ -133,6 +159,7 @@ function ChatView() {
         .from("messages")
         .select("*")
         .or(`and(sender_id.eq.${me},receiver_id.eq.${otherId}),and(sender_id.eq.${otherId},receiver_id.eq.${me})`)
+
         .order("created_at", { ascending: true })
         .limit(500);
       if (error) throw error;
@@ -285,6 +312,29 @@ function ChatView() {
 
   const sendMessage = async (content: string | null, attachment?: { url: string; type: string }) => {
     if (!me) return;
+    const key = ["messages", me, otherId] as const;
+    const tempId = `temp-${crypto.randomUUID()}`;
+    const optimistic: Message = {
+      id: tempId,
+      sender_id: me,
+      receiver_id: otherId,
+      content,
+      attachment_url: attachment?.url ?? null,
+      attachment_type: attachment?.type ?? null,
+      created_at: new Date().toISOString(),
+      read_at: null,
+      reply_to_id: replyTo?.id ?? null,
+      edited_at: null,
+      deleted_for_everyone: false,
+      deleted_for: [],
+      is_pinned: false,
+      is_announcement: false,
+    };
+    // paint instantly, don't wait for the server
+    qc.setQueryData<Message[]>(key, (cur) => [...(cur ?? []), optimistic]);
+    const prevReply = replyTo;
+    setText("");
+    setReplyTo(null);
     setSending(true);
     try {
       const { error } = await supabase.from("messages").insert({
@@ -293,14 +343,13 @@ function ChatView() {
         content,
         attachment_url: attachment?.url ?? null,
         attachment_type: attachment?.type ?? null,
-        reply_to_id: replyTo?.id ?? null,
+        reply_to_id: prevReply?.id ?? null,
       });
       if (error) throw error;
-      setText("");
-      setReplyTo(null);
-      qc.invalidateQueries({ queryKey: ["messages", me, otherId] });
+      qc.invalidateQueries({ queryKey: key });
       qc.invalidateQueries({ queryKey: ["chats"] });
     } catch (e) {
+      qc.setQueryData<Message[]>(key, (cur) => (cur ?? []).filter((m) => m.id !== tempId));
       const msg = e instanceof Error ? e.message : "خطا در ارسال";
       if (msg.includes("مسدود")) toast.error("شما توسط این کاربر مسدود شده‌اید");
       else if (msg.includes("suspended")) toast.error("حساب شما تعلیق شده است");
@@ -309,6 +358,7 @@ function ChatView() {
       setSending(false);
     }
   };
+
 
   const saveEdit = async () => {
     if (!editing || !text.trim()) return;
@@ -556,11 +606,24 @@ function ChatView() {
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-3 py-4 space-y-2">
-          {messages.length === 0 && (
+          {messages.length === 0 && (messagesLoading || messagesFetching) && (
+            <div className="space-y-3 py-4">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className={`flex ${i % 2 ? "justify-start" : "justify-end"}`}>
+                  <div
+                    className="h-10 rounded-2xl bg-muted animate-pulse"
+                    style={{ width: `${45 + ((i * 13) % 35)}%` }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+          {messages.length === 0 && !messagesLoading && !messagesFetching && (
             <div className="text-center text-sm text-muted-foreground py-12">
               شروع گفتگو با ارسال پیام
             </div>
           )}
+
           {messages.map((m) => {
             const mine = m.sender_id === me;
             const signed = m.attachment_url ? signedAttachments[m.attachment_url] : null;

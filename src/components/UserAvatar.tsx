@@ -1,6 +1,6 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useEffect, useState } from "react";
-import { getAvatarUrl } from "@/lib/avatar";
+import { memo, useEffect, useState } from "react";
+import { getAvatarUrl, getAvatarUrlSync } from "@/lib/avatar";
 import { BadgeCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -12,13 +12,16 @@ interface Props {
   badgeClassName?: string;
 }
 
-export function UserAvatar({ avatarPath, name, verified, className, badgeClassName }: Props) {
-  const [url, setUrl] = useState<string | null>(null);
+function UserAvatarBase({ avatarPath, name, verified, className, badgeClassName }: Props) {
+  // synchronous cache hit → paints on first render, no flash
+  const [url, setUrl] = useState<string | null>(() => getAvatarUrlSync(avatarPath));
+
   useEffect(() => {
+    const immediate = getAvatarUrlSync(avatarPath);
+    setUrl(immediate);
+    if (immediate || !avatarPath) return;
     let alive = true;
-    getAvatarUrl(avatarPath).then((u) => {
-      if (alive) setUrl(u);
-    });
+    getAvatarUrl(avatarPath).then((u) => { if (alive) setUrl(u); });
     return () => { alive = false; };
   }, [avatarPath]);
 
@@ -26,7 +29,7 @@ export function UserAvatar({ avatarPath, name, verified, className, badgeClassNa
   return (
     <div className="relative inline-block">
       <Avatar className={cn("w-10 h-10", className)}>
-        {url && <AvatarImage src={url} alt={name || ""} />}
+        {url && <AvatarImage src={url} alt={name || ""} loading="lazy" decoding="async" />}
         <AvatarFallback className="bg-primary/15 text-primary font-medium">{initials}</AvatarFallback>
       </Avatar>
       {verified && (
@@ -35,3 +38,5 @@ export function UserAvatar({ avatarPath, name, verified, className, badgeClassNa
     </div>
   );
 }
+
+export const UserAvatar = memo(UserAvatarBase);

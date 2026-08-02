@@ -10,6 +10,7 @@ import { MessageCirclePlus, Settings, Shield, MessageCircle, Bookmark, BadgeChec
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Logo, useBranding } from "@/components/Logo";
 import { formatRelativeTime } from "@/lib/format";
+import { preloadAvatars } from "@/lib/avatar";
 import {
   getCachedUserId, setCachedUserId, readSnapshot, writeSnapshot,
   getMutedChats, setChatMuted, getHiddenChats, hideChats,
@@ -115,17 +116,20 @@ function ChatsList() {
     queryFn: async () => {
       if (!userId) return [];
 
-      // 1) Direct messages
-      const { data: msgs, error } = await supabase
-        .from("messages")
-        .select("id, sender_id, receiver_id, group_id, content, attachment_type, read_at, created_at, deleted_for_everyone, deleted_for")
-        .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
-        .is("group_id", null)
-        .order("created_at", { ascending: false })
-        .limit(500);
-      if (error) throw error;
+      // direct messages + groups in parallel
+      const [msgRes, groupRes] = await Promise.all([
+        supabase
+          .from("messages")
+          .select("id, sender_id, receiver_id, content, attachment_type, read_at, created_at, deleted_for_everyone, deleted_for")
+          .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
+          .is("group_id", null)
+          .order("created_at", { ascending: false })
+          .limit(400),
+        supabase.rpc("my_groups"),
+      ]);
+      if (msgRes.error) throw msgRes.error;
 
-      const filtered = (msgs ?? []).filter(
+      const filtered = (msgRes.data ?? []).filter(
         (m: { deleted_for: string[] | null; receiver_id: string | null }) =>
           m.receiver_id !== null && !(m.deleted_for || []).includes(userId)
       );
@@ -163,9 +167,7 @@ function ChatsList() {
         }
       }
 
-      // 2) Groups
-      const { data: groups } = await supabase.rpc("my_groups");
-      const groupItems: ChatItem[] = ((groups || []) as Array<{
+      const groupItems: ChatItem[] = ((groupRes.data || []) as Array<{
         id: string; name: string; avatar_url: string | null;
         member_count: number; last_msg_at: string | null; is_channel?: boolean;
       }>).map((g) => ({
@@ -181,6 +183,41 @@ function ChatsList() {
       return result;
     },
   });
+
+  // warm every avatar (batch-signed) so pictures never pop in late
+  useEffect(() => {
+    if (!chats.length) return;
+    void preloadAvatars(chats.map((c) => c.avatar));
+  }, [chats]);
+
+  // preload the most recent conversations so opening them is instant
+  useEffect(() => {
+    if (!userId || !chats.length) return;
+    const recentDms = chats.filter((c) => c.kind === "dm").slice(0, 5);
+    for (const c of recentDms) {
+      void qc.prefetchQuery({
+        queryKey: ["messages", userId, c.id],
+        staleTime: 15_000,
+        queryFn: async () => {
+          const { data, error } = await supabase
+            .from("messages")
+            .select("*")
+            .or(`and(sender_id.eq.${userId},receiver_id.eq.${c.id}),and(sender_id.eq.${c.id},receiver_id.eq.${userId})`)
+            .order("created_at", { ascending: true })
+            .limit(500);
+          if (error) throw error;
+          const list = (data || []).filter(
+            (m: { deleted_for: string[] | null }) => !(m.deleted_for || []).includes(userId),
+          );
+          writeSnapshot(`messages:${userId}:${c.id}`, list);
+          return list;
+        },
+      });
+    }
+  }, [chats, userId, qc]);
+
+
+
 
   const { data: searchResults = [], isFetching: searching } = useQuery<SearchItem[]>({
     queryKey: ["global-search", search],
@@ -377,10 +414,19 @@ function ChatsList() {
         )}
         {visibleChats.length === 0 ? (
           (!authReady || chatsLoading || chatsFetching) ? (
-            <div className="flex flex-col items-center justify-center py-20">
-              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-            </div>
+            <ul className="divide-y">
+              {Array.from({ length: 7 }).map((_, i) => (
+                <li key={i} className="flex items-center gap-3 px-4 py-3 animate-pulse">
+                  <div className="w-12 h-12 rounded-full bg-muted shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3.5 w-32 rounded bg-muted" />
+                    <div className="h-3 w-48 rounded bg-muted/70" />
+                  </div>
+                </li>
+              ))}
+            </ul>
           ) : (
+
             <div className="flex flex-col items-center justify-center py-20 text-center px-4">
               <div className="w-20 h-20 rounded-3xl bg-primary/10 flex items-center justify-center mb-4">
                 <MessageCircle className="w-10 h-10 text-primary" />
