@@ -10,6 +10,7 @@ import { MessageCirclePlus, Settings, Shield, MessageCircle, Bookmark, BadgeChec
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Logo, useBranding } from "@/components/Logo";
 import { formatRelativeTime } from "@/lib/format";
+import { preloadAvatars } from "@/lib/avatar";
 import {
   getCachedUserId, setCachedUserId, readSnapshot, writeSnapshot,
   getMutedChats, setChatMuted, getHiddenChats, hideChats,
