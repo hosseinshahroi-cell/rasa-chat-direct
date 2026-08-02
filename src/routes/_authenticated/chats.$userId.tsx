@@ -129,9 +129,14 @@ function ChatView() {
         ? "آنلاین"
         : formatLastSeen(other?.last_seen_at);
 
-  const { data: messages = [] } = useQuery<Message[]>({
+  const {
+    data: messages = [],
+    isLoading: messagesLoading,
+    isFetching: messagesFetching,
+  } = useQuery<Message[]>({
     queryKey: ["messages", me, otherId],
     enabled: !!me,
+    staleTime: 5_000,
     initialData: () => (me ? readSnapshot<Message[]>(`messages:${me}:${otherId}`) : undefined),
     initialDataUpdatedAt: 0,
     queryFn: async () => {
@@ -139,6 +144,7 @@ function ChatView() {
         .from("messages")
         .select("*")
         .or(`and(sender_id.eq.${me},receiver_id.eq.${otherId}),and(sender_id.eq.${otherId},receiver_id.eq.${me})`)
+
         .order("created_at", { ascending: true })
         .limit(500);
       if (error) throw error;
