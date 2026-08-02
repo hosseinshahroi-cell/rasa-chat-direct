@@ -284,7 +284,20 @@ function ChatsList() {
                 <X className="w-5 h-5" />
               </Button>
               <span className="text-sm font-semibold">{selected.length} انتخاب شده</span>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-xs"
+                onClick={() =>
+                  setSelected(
+                    selected.length === visibleChats.length ? [] : visibleChats.map(keyOf),
+                  )
+                }
+              >
+                {selected.length === visibleChats.length ? "لغو همه" : "انتخاب همه"}
+              </Button>
             </div>
+
             <div className="flex items-center gap-1">
               <Button size="icon" variant="ghost" onClick={toggleMuteSelection} title={allMuted ? "فعال کردن صدا" : "بی‌صدا"}>
                 {allMuted ? <Bell className="w-5 h-5" /> : <BellOff className="w-5 h-5" />}
@@ -414,13 +427,24 @@ function ChatRow({
 }) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longRef = useRef(false);
+  const startPos = useRef<{ x: number; y: number } | null>(null);
 
-  const start = () => {
+  const start = (e: React.PointerEvent) => {
     longRef.current = false;
-    timerRef.current = setTimeout(() => { longRef.current = true; onToggle(); }, 450);
+    startPos.current = { x: e.clientX, y: e.clientY };
+    timerRef.current = setTimeout(() => {
+      longRef.current = true;
+      if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(15);
+      onToggle();
+    }, 350);
   };
   const cancel = () => {
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+  };
+  const move = (e: React.PointerEvent) => {
+    const p = startPos.current;
+    if (!p) return;
+    if (Math.abs(e.clientX - p.x) > 8 || Math.abs(e.clientY - p.y) > 8) cancel();
   };
   const click = () => {
     cancel();
@@ -434,33 +458,39 @@ function ChatRow({
       role="button"
       tabIndex={0}
       onPointerDown={start}
+      onPointerMove={move}
       onPointerUp={cancel}
       onPointerLeave={cancel}
       onPointerCancel={cancel}
       onContextMenu={(e) => { e.preventDefault(); onToggle(); }}
       onClick={click}
       onKeyDown={(e) => { if (e.key === "Enter") click(); }}
-      className={`flex items-center gap-3 px-4 py-3 transition cursor-pointer select-none ${
-        selected ? "bg-primary/10" : "hover:bg-accent/50"
+      className={`flex items-center gap-3 px-4 py-3 transition-colors cursor-pointer select-none touch-pan-y ${
+        selected ? "bg-primary/15" : "hover:bg-accent/50 active:bg-accent/60"
       }`}
     >
+      {selectionMode && (
+        <span
+          className={`shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
+            selected ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground/40"
+          }`}
+        >
+          {selected && <Check className="w-3 h-3" />}
+        </span>
+      )}
       <div className="relative shrink-0">
         <UserAvatar
           avatarPath={c.avatar} name={c.name}
           verified={c.kind === "dm" ? c.verified : false}
           className="w-12 h-12"
         />
-        {selected && (
-          <span className="absolute -bottom-0.5 -left-0.5 w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center">
-            <Check className="w-3 h-3" />
-          </span>
-        )}
       </div>
       <ChatRowBody c={c} />
       {muted && <BellOff className="w-4 h-4 text-muted-foreground shrink-0" />}
     </div>
   );
 }
+
 
 function StoriesBar({ me }: { me: string | null }) {
   const qc = useQueryClient();
