@@ -386,10 +386,19 @@ function ChatsList() {
         )}
         {visibleChats.length === 0 ? (
           (!authReady || chatsLoading || chatsFetching) ? (
-            <div className="flex flex-col items-center justify-center py-20">
-              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-            </div>
+            <ul className="divide-y">
+              {Array.from({ length: 7 }).map((_, i) => (
+                <li key={i} className="flex items-center gap-3 px-4 py-3 animate-pulse">
+                  <div className="w-12 h-12 rounded-full bg-muted shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3.5 w-32 rounded bg-muted" />
+                    <div className="h-3 w-48 rounded bg-muted/70" />
+                  </div>
+                </li>
+              ))}
+            </ul>
           ) : (
+
             <div className="flex flex-col items-center justify-center py-20 text-center px-4">
               <div className="w-20 h-20 rounded-3xl bg-primary/10 flex items-center justify-center mb-4">
                 <MessageCircle className="w-10 h-10 text-primary" />
