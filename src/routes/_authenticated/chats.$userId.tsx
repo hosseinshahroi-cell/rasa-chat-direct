@@ -57,7 +57,8 @@ function ChatView() {
   const { userId: otherId } = Route.useParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const [me, setMe] = useState<string | null>(null);
+  // seeded synchronously so cached messages paint on the very first render
+  const [me, setMe] = useState<string | null>(() => getCachedUserId());
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [recording, setRecording] = useState(false);
