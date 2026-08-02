@@ -297,6 +297,29 @@ function ChatView() {
 
   const sendMessage = async (content: string | null, attachment?: { url: string; type: string }) => {
     if (!me) return;
+    const key = ["messages", me, otherId] as const;
+    const tempId = `temp-${crypto.randomUUID()}`;
+    const optimistic: Message = {
+      id: tempId,
+      sender_id: me,
+      receiver_id: otherId,
+      content,
+      attachment_url: attachment?.url ?? null,
+      attachment_type: attachment?.type ?? null,
+      created_at: new Date().toISOString(),
+      read_at: null,
+      reply_to_id: replyTo?.id ?? null,
+      edited_at: null,
+      deleted_for_everyone: false,
+      deleted_for: [],
+      is_pinned: false,
+      is_announcement: false,
+    };
+    // paint instantly, don't wait for the server
+    qc.setQueryData<Message[]>(key, (cur) => [...(cur ?? []), optimistic]);
+    const prevReply = replyTo;
+    setText("");
+    setReplyTo(null);
     setSending(true);
     try {
       const { error } = await supabase.from("messages").insert({
@@ -305,14 +328,13 @@ function ChatView() {
         content,
         attachment_url: attachment?.url ?? null,
         attachment_type: attachment?.type ?? null,
-        reply_to_id: replyTo?.id ?? null,
+        reply_to_id: prevReply?.id ?? null,
       });
       if (error) throw error;
-      setText("");
-      setReplyTo(null);
-      qc.invalidateQueries({ queryKey: ["messages", me, otherId] });
+      qc.invalidateQueries({ queryKey: key });
       qc.invalidateQueries({ queryKey: ["chats"] });
     } catch (e) {
+      qc.setQueryData<Message[]>(key, (cur) => (cur ?? []).filter((m) => m.id !== tempId));
       const msg = e instanceof Error ? e.message : "خطا در ارسال";
       if (msg.includes("مسدود")) toast.error("شما توسط این کاربر مسدود شده‌اید");
       else if (msg.includes("suspended")) toast.error("حساب شما تعلیق شده است");
@@ -321,6 +343,7 @@ function ChatView() {
       setSending(false);
     }
   };
+
 
   const saveEdit = async () => {
     if (!editing || !text.trim()) return;
