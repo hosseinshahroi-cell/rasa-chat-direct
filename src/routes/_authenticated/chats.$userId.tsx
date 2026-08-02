@@ -25,7 +25,7 @@ import { ReportDialog } from "@/components/ReportDialog";
 import { ForwardDialog } from "@/components/ForwardDialog";
 import { MessageText } from "@/components/MessageText";
 import { FileAttachment } from "@/components/FileAttachment";
-import { readSnapshot, writeSnapshot } from "@/lib/cache";
+import { readSnapshot, writeSnapshot, getCachedUserId, setCachedUserId } from "@/lib/cache";
 
 const REACTION_EMOJIS = ["❤️", "👍", "👎", "😂", "😮", "😢", "🔥", "🙏"];
 
