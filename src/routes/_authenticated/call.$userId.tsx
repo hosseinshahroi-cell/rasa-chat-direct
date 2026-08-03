@@ -240,14 +240,30 @@ function CallView() {
       const durationSec = secondsRef.current;
       (async () => {
         try {
-          if (micRef.current) { micRef.current.stop(); micRef.current.close(); micRef.current = null; }
-          if (camRef.current) { camRef.current.stop(); camRef.current.close(); camRef.current = null; }
+          if (clientRef.current) {
+            for (const u of clientRef.current.remoteUsers) u.audioTrack?.stop();
+          }
+          playedAudioRef.current.clear();
+          if (micRef.current) {
+            micRef.current.stop();
+            micRef.current.getMediaStreamTrack().stop();
+            micRef.current.close();
+            micRef.current = null;
+          }
+          if (camRef.current) {
+            camRef.current.stop();
+            camRef.current.getMediaStreamTrack().stop();
+            camRef.current.close();
+            camRef.current = null;
+          }
           if (clientRef.current) {
             await clientRef.current.leave();
             clientRef.current.removeAllListeners();
             clientRef.current = null;
           }
+          joinedRef.current = false;
         } catch { /* noop */ }
+
         if (channelRef.current) supabase.removeChannel(channelRef.current);
         try { await sendSignal("hangup"); } catch { /* noop */ }
         if (isCallerRef.current) {
