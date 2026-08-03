@@ -11,6 +11,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Logo, useBranding } from "@/components/Logo";
 import { formatRelativeTime } from "@/lib/format";
 import { preloadAvatars } from "@/lib/avatar";
+import { StoryPlayer, type StoryMedia } from "@/components/StoryPlayer";
+
 import {
   getCachedUserId, setCachedUserId, readSnapshot, writeSnapshot,
   getMutedChats, setChatMuted, getHiddenChats, hideChats,
@@ -542,8 +544,8 @@ function StoriesBar({ me }: { me: string | null }) {
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
-  const [viewer, setViewer] = useState<StoryItem | null>(null);
-  const [signed, setSigned] = useState<string | null>(null);
+  const [activeUser, setActiveUser] = useState<string | null>(null);
+
   const [showViewers, setShowViewers] = useState(false);
   const [viewers, setViewers] = useState<StoryViewer[]>([]);
 
@@ -583,24 +585,8 @@ function StoriesBar({ me }: { me: string | null }) {
     qc.invalidateQueries({ queryKey: ["stories"] });
   };
 
-  useEffect(() => {
-    if (!viewer) { setSigned(null); return; }
-    let alive = true;
-    supabase.storage.from("chat-attachments").createSignedUrl(viewer.media_url, 60 * 20).then(({ data }) => {
-      if (alive) setSigned(data?.signedUrl ?? null);
-    });
-    if (me && viewer.user_id !== me) (supabase.rpc as any)("view_story", { p_story: viewer.id }).then(() => qc.invalidateQueries({ queryKey: ["stories"] }));
-    return () => { alive = false; };
-  }, [viewer, me, qc]);
 
-  // Keep viewer in sync with fresh stories data (like counts, etc.)
-  useEffect(() => {
-    if (!viewer) return;
-    const fresh = stories.find((s) => s.id === viewer.id);
-    if (fresh && (fresh.like_count !== viewer.like_count || fresh.liked_by_me !== viewer.liked_by_me || fresh.view_count !== viewer.view_count)) {
-      setViewer(fresh);
-    }
-  }, [stories, viewer]);
+
 
   const onStoryFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -631,7 +617,7 @@ function StoriesBar({ me }: { me: string | null }) {
     if (error) { toast.error(error.message); return; }
     await supabase.storage.from("chat-attachments").remove([story.media_url]);
     toast.success("استوری حذف شد");
-    setViewer(null);
+    setActiveUser(null);
     qc.invalidateQueries({ queryKey: ["stories"] });
   };
 
@@ -640,6 +626,18 @@ function StoriesBar({ me }: { me: string | null }) {
     stories.forEach((s) => { if (!map.has(s.user_id)) map.set(s.user_id, s); });
     return Array.from(map.values());
   }, [stories]);
+
+  const activeStories = useMemo(
+    () =>
+      activeUser
+        ? stories
+            .filter((s) => s.user_id === activeUser)
+            .slice()
+            .sort((a, b) => a.created_at.localeCompare(b.created_at))
+        : [],
+    [stories, activeUser]
+  );
+
 
   return (
     <div className="border-b bg-card/60 px-3 py-3 overflow-x-auto">
@@ -652,7 +650,7 @@ function StoriesBar({ me }: { me: string | null }) {
         </button>
         <input ref={fileRef} type="file" accept="image/*,video/*" hidden onChange={onStoryFile} />
         {grouped.map((s) => (
-          <button key={s.id} onClick={() => setViewer(s)} className="flex flex-col items-center gap-1 text-xs min-w-16">
+          <button key={s.id} onClick={() => setActiveUser(s.user_id)} className="flex flex-col items-center gap-1 text-xs min-w-16">
             <span className={`rounded-full p-0.5 ${s.viewed_by_me ? "bg-muted" : "bg-primary"}`}>
               <UserAvatar avatarPath={s.avatar_url} name={s.display_name || s.username} className="w-14 h-14 ring-2 ring-background" />
             </span>
@@ -660,63 +658,23 @@ function StoriesBar({ me }: { me: string | null }) {
           </button>
         ))}
       </div>
-      <Dialog open={!!viewer} onOpenChange={(o) => !o && setViewer(null)}>
-        <DialogContent className="max-w-none w-screen h-[100dvh] p-0 m-0 rounded-none overflow-hidden bg-black border-0 sm:rounded-none">
-          {viewer && (
-            <div className="relative w-full h-full bg-black flex flex-col items-center justify-center">
-              <div className="flex-1 w-full flex items-center justify-center">
-                {!signed && <Loader2 className="w-6 h-6 animate-spin text-primary" />}
-                {signed && viewer.media_type === "image" && <img src={signed} alt="استوری" className="max-h-full max-w-full w-auto h-auto object-contain" />}
-                {signed && viewer.media_type === "video" && (
-                  <video
-                    src={signed} autoPlay playsInline controls
-                    controlsList="nodownload nofullscreen noremoteplayback noplaybackrate"
-                    disablePictureInPicture
-                    className="max-h-full max-w-full w-auto h-auto"
-                  />
-                )}
-              </div>
-              <div className="absolute top-0 inset-x-0 p-3 bg-gradient-to-b from-black/70 to-transparent text-primary-foreground">
-                <div className="flex items-center gap-2">
-                  <UserAvatar avatarPath={viewer.avatar_url} name={viewer.display_name || viewer.username} className="w-9 h-9" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold truncate">{viewer.display_name || viewer.username}</p>
-                    <p className="text-[11px] opacity-80">{formatRelativeTime(viewer.created_at)}</p>
-                  </div>
-                  {viewer.user_id === me && (
-                    <Button size="icon" variant="destructive" className="h-8 w-8 rounded-full" onClick={() => deleteStory(viewer)} title="حذف استوری">
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  )}
-                </div>
-              </div>
-              <div className="w-full bg-gradient-to-t from-black/85 to-transparent px-3 py-3 flex items-center gap-3 text-primary-foreground">
-                {viewer.user_id === me ? (
-                  <button
-                    onClick={() => { loadViewers(viewer.id); setShowViewers(true); }}
-                    className="flex items-center gap-3 text-sm hover:opacity-90"
-                  >
-                    <span className="inline-flex items-center gap-1"><Eye className="w-4 h-4" /> {viewer.view_count} بازدید</span>
-                    <span className="inline-flex items-center gap-1"><Heart className="w-4 h-4 fill-red-500 text-red-500" /> {viewer.like_count}</span>
-                  </button>
-                ) : (
-                  <>
-                    <button
-                      onClick={() => toggleLike(viewer)}
-                      className="inline-flex items-center gap-1.5 text-sm"
-                      aria-label="لایک"
-                    >
-                      <Heart className={`w-6 h-6 transition ${viewer.liked_by_me ? "fill-red-500 text-red-500 scale-110" : "text-white"}`} />
-                      {viewer.like_count > 0 && <span>{viewer.like_count}</span>}
-                    </button>
-                    <span className="ml-auto inline-flex items-center gap-1 text-xs opacity-80"><Eye className="w-3.5 h-3.5" /> {viewer.view_count}</span>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      {activeStories.length > 0 && (
+        <StoryPlayer
+          stories={activeStories}
+          me={me}
+          onClose={() => setActiveUser(null)}
+          onView={(s: StoryMedia) => {
+            (supabase.rpc as any)("view_story", { p_story: s.id }).then(() =>
+              qc.invalidateQueries({ queryKey: ["stories"] })
+            );
+          }}
+          onLike={(s: StoryMedia) => toggleLike(s as StoryItem)}
+          onDelete={(s: StoryMedia) => deleteStory(s as StoryItem)}
+          onOpenViewers={(s: StoryMedia) => { loadViewers(s.id); setShowViewers(true); }}
+
+        />
+      )}
+
       <Sheet open={showViewers} onOpenChange={setShowViewers}>
         <SheetContent side="bottom" className="max-h-[70vh] overflow-y-auto">
           <SheetHeader>
