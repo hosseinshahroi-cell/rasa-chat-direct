@@ -61,8 +61,11 @@ function CallView() {
   const callIdRef = useRef<string>(incoming || crypto.randomUUID());
   const isCallerRef = useRef<boolean>(!incoming);
   const endedRef = useRef(false);
+  const joinedRef = useRef(false);
+  const playedAudioRef = useRef<Set<string>>(new Set());
   const secondsRef = useRef(0);
   const facingRef = useRef<"user" | "environment">("user");
+
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setMe(data.user?.id ?? null));
@@ -95,7 +98,8 @@ function CallView() {
     };
 
     const joinAgora = async () => {
-      if (cancelled) return;
+      if (cancelled || joinedRef.current) return;
+      joinedRef.current = true;
       try {
         const uid = uuidToUid(me);
         const channel = callIdRef.current;
@@ -103,20 +107,45 @@ function CallView() {
         const [tokenRes, mic] = await Promise.all([
           fetchToken({ data: { channel, uid } }),
           AgoraRTC.createMicrophoneAudioTrack({
-            encoderConfig: "speech_standard",
+            // low-latency mono speech profile
+            encoderConfig: {
+              sampleRate: 48000,
+              stereo: false,
+              bitrate: 32,
+            },
+            // WebRTC audio processing: echo cancel / noise suppress / auto gain
             AEC: true,
             ANS: true,
             AGC: true,
           }),
         ]);
         if (cancelled) { mic.stop(); mic.close(); return; }
+        // make sure the browser constraints are really applied (speaker mode too)
+        try {
+          await mic.getMediaStreamTrack().applyConstraints({
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            channelCount: 1,
+          } as MediaTrackConstraints);
+        } catch { /* some browsers reject re-apply; agora flags already set */ }
         micRef.current = mic;
+        // never play our own mic locally – that is the main source of echo
+        mic.stop();
         const { appId, token } = tokenRes;
+        if (clientRef.current) { try { await clientRef.current.leave(); } catch { /* noop */ } clientRef.current.removeAllListeners(); }
         const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
         clientRef.current = client;
         client.on("user-published", async (user: IAgoraRTCRemoteUser, mediaType) => {
           await client.subscribe(user, mediaType);
-          if (mediaType === "audio") user.audioTrack?.play();
+          if (mediaType === "audio") {
+            const key = `${user.uid}`;
+            // guard against playing the same remote audio twice (double voice / echo)
+            if (!playedAudioRef.current.has(key)) {
+              playedAudioRef.current.add(key);
+              user.audioTrack?.play();
+            }
+          }
           if (mediaType === "video") {
             setRemoteVideoOn(true);
             setTimeout(() => {
@@ -125,9 +154,15 @@ function CallView() {
           }
           setStatus("connected");
         });
-        client.on("user-unpublished", (_u, mediaType) => {
+
+        client.on("user-unpublished", (u, mediaType) => {
           if (mediaType === "video") setRemoteVideoOn(false);
+          if (mediaType === "audio") {
+            u.audioTrack?.stop();
+            playedAudioRef.current.delete(`${u.uid}`);
+          }
         });
+
         client.on("user-joined", () => setStatus("connected"));
         client.on("user-left", () => {
           if (!endedRef.current) { endedRef.current = true; setStatus("ended"); }
@@ -205,14 +240,30 @@ function CallView() {
       const durationSec = secondsRef.current;
       (async () => {
         try {
-          if (micRef.current) { micRef.current.stop(); micRef.current.close(); micRef.current = null; }
-          if (camRef.current) { camRef.current.stop(); camRef.current.close(); camRef.current = null; }
+          if (clientRef.current) {
+            for (const u of clientRef.current.remoteUsers) u.audioTrack?.stop();
+          }
+          playedAudioRef.current.clear();
+          if (micRef.current) {
+            micRef.current.stop();
+            micRef.current.getMediaStreamTrack().stop();
+            micRef.current.close();
+            micRef.current = null;
+          }
+          if (camRef.current) {
+            camRef.current.stop();
+            camRef.current.getMediaStreamTrack().stop();
+            camRef.current.close();
+            camRef.current = null;
+          }
           if (clientRef.current) {
             await clientRef.current.leave();
             clientRef.current.removeAllListeners();
             clientRef.current = null;
           }
+          joinedRef.current = false;
         } catch { /* noop */ }
+
         if (channelRef.current) supabase.removeChannel(channelRef.current);
         try { await sendSignal("hangup"); } catch { /* noop */ }
         if (isCallerRef.current) {
