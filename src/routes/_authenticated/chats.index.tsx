@@ -542,8 +542,8 @@ function StoriesBar({ me }: { me: string | null }) {
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
-  const [viewer, setViewer] = useState<StoryItem | null>(null);
-  const [signed, setSigned] = useState<string | null>(null);
+  const [activeUser, setActiveUser] = useState<string | null>(null);
+
   const [showViewers, setShowViewers] = useState(false);
   const [viewers, setViewers] = useState<StoryViewer[]>([]);
 
