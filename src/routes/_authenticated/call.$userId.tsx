@@ -155,9 +155,14 @@ function CallView() {
           setStatus("connected");
         });
 
-        client.on("user-unpublished", (_u, mediaType) => {
+        client.on("user-unpublished", (u, mediaType) => {
           if (mediaType === "video") setRemoteVideoOn(false);
+          if (mediaType === "audio") {
+            u.audioTrack?.stop();
+            playedAudioRef.current.delete(`${u.uid}`);
+          }
         });
+
         client.on("user-joined", () => setStatus("connected"));
         client.on("user-left", () => {
           if (!endedRef.current) { endedRef.current = true; setStatus("ended"); }
