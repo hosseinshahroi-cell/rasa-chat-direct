@@ -95,7 +95,8 @@ function CallView() {
     };
 
     const joinAgora = async () => {
-      if (cancelled) return;
+      if (cancelled || joinedRef.current) return;
+      joinedRef.current = true;
       try {
         const uid = uuidToUid(me);
         const channel = callIdRef.current;
@@ -103,20 +104,45 @@ function CallView() {
         const [tokenRes, mic] = await Promise.all([
           fetchToken({ data: { channel, uid } }),
           AgoraRTC.createMicrophoneAudioTrack({
-            encoderConfig: "speech_standard",
+            // low-latency mono speech profile
+            encoderConfig: {
+              sampleRate: 48000,
+              stereo: false,
+              bitrate: 32,
+            },
+            // WebRTC audio processing: echo cancel / noise suppress / auto gain
             AEC: true,
             ANS: true,
             AGC: true,
           }),
         ]);
         if (cancelled) { mic.stop(); mic.close(); return; }
+        // make sure the browser constraints are really applied (speaker mode too)
+        try {
+          await mic.getMediaStreamTrack().applyConstraints({
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            channelCount: 1,
+          } as MediaTrackConstraints);
+        } catch { /* some browsers reject re-apply; agora flags already set */ }
         micRef.current = mic;
+        // never play our own mic locally – that is the main source of echo
+        mic.stop();
         const { appId, token } = tokenRes;
+        if (clientRef.current) { try { await clientRef.current.leave(); } catch { /* noop */ } clientRef.current.removeAllListeners(); }
         const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
         clientRef.current = client;
         client.on("user-published", async (user: IAgoraRTCRemoteUser, mediaType) => {
           await client.subscribe(user, mediaType);
-          if (mediaType === "audio") user.audioTrack?.play();
+          if (mediaType === "audio") {
+            const key = `${user.uid}`;
+            // guard against playing the same remote audio twice (double voice / echo)
+            if (!playedAudioRef.current.has(key)) {
+              playedAudioRef.current.add(key);
+              user.audioTrack?.play();
+            }
+          }
           if (mediaType === "video") {
             setRemoteVideoOn(true);
             setTimeout(() => {
@@ -125,6 +151,7 @@ function CallView() {
           }
           setStatus("connected");
         });
+
         client.on("user-unpublished", (_u, mediaType) => {
           if (mediaType === "video") setRemoteVideoOn(false);
         });
