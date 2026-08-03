@@ -583,24 +583,8 @@ function StoriesBar({ me }: { me: string | null }) {
     qc.invalidateQueries({ queryKey: ["stories"] });
   };
 
-  useEffect(() => {
-    if (!viewer) { setSigned(null); return; }
-    let alive = true;
-    supabase.storage.from("chat-attachments").createSignedUrl(viewer.media_url, 60 * 20).then(({ data }) => {
-      if (alive) setSigned(data?.signedUrl ?? null);
-    });
-    if (me && viewer.user_id !== me) (supabase.rpc as any)("view_story", { p_story: viewer.id }).then(() => qc.invalidateQueries({ queryKey: ["stories"] }));
-    return () => { alive = false; };
-  }, [viewer, me, qc]);
 
-  // Keep viewer in sync with fresh stories data (like counts, etc.)
-  useEffect(() => {
-    if (!viewer) return;
-    const fresh = stories.find((s) => s.id === viewer.id);
-    if (fresh && (fresh.like_count !== viewer.like_count || fresh.liked_by_me !== viewer.liked_by_me || fresh.view_count !== viewer.view_count)) {
-      setViewer(fresh);
-    }
-  }, [stories, viewer]);
+
 
   const onStoryFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
