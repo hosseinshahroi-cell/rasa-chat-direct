@@ -11,6 +11,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Logo, useBranding } from "@/components/Logo";
 import { formatRelativeTime } from "@/lib/format";
 import { preloadAvatars } from "@/lib/avatar";
+import { StoryPlayer, type StoryMedia } from "@/components/StoryPlayer";
+
 import {
   getCachedUserId, setCachedUserId, readSnapshot, writeSnapshot,
   getMutedChats, setChatMuted, getHiddenChats, hideChats,
