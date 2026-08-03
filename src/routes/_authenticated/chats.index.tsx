@@ -641,6 +641,18 @@ function StoriesBar({ me }: { me: string | null }) {
     return Array.from(map.values());
   }, [stories]);
 
+  const activeStories = useMemo(
+    () =>
+      activeUser
+        ? stories
+            .filter((s) => s.user_id === activeUser)
+            .slice()
+            .sort((a, b) => a.created_at.localeCompare(b.created_at))
+        : [],
+    [stories, activeUser]
+  );
+
+
   return (
     <div className="border-b bg-card/60 px-3 py-3 overflow-x-auto">
       <div className="flex items-center gap-3 min-w-max">
