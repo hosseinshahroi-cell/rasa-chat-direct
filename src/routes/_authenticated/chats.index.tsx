@@ -663,14 +663,15 @@ function StoriesBar({ me }: { me: string | null }) {
           stories={activeStories}
           me={me}
           onClose={() => setActiveUser(null)}
-          onView={(s) => {
+          onView={(s: StoryMedia) => {
             (supabase.rpc as any)("view_story", { p_story: s.id }).then(() =>
               qc.invalidateQueries({ queryKey: ["stories"] })
             );
           }}
-          onLike={(s) => toggleLike(s as StoryItem)}
-          onDelete={(s) => deleteStory(s as StoryItem)}
-          onOpenViewers={(s) => { loadViewers(s.id); setShowViewers(true); }}
+          onLike={(s: StoryMedia) => toggleLike(s as StoryItem)}
+          onDelete={(s: StoryMedia) => deleteStory(s as StoryItem)}
+          onOpenViewers={(s: StoryMedia) => { loadViewers(s.id); setShowViewers(true); }}
+
         />
       )}
 
