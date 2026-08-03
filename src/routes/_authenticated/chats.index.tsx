@@ -615,7 +615,7 @@ function StoriesBar({ me }: { me: string | null }) {
     if (error) { toast.error(error.message); return; }
     await supabase.storage.from("chat-attachments").remove([story.media_url]);
     toast.success("استوری حذف شد");
-    setViewer(null);
+    setActiveUser(null);
     qc.invalidateQueries({ queryKey: ["stories"] });
   };
 
@@ -648,7 +648,7 @@ function StoriesBar({ me }: { me: string | null }) {
         </button>
         <input ref={fileRef} type="file" accept="image/*,video/*" hidden onChange={onStoryFile} />
         {grouped.map((s) => (
-          <button key={s.id} onClick={() => setViewer(s)} className="flex flex-col items-center gap-1 text-xs min-w-16">
+          <button key={s.id} onClick={() => setActiveUser(s.user_id)} className="flex flex-col items-center gap-1 text-xs min-w-16">
             <span className={`rounded-full p-0.5 ${s.viewed_by_me ? "bg-muted" : "bg-primary"}`}>
               <UserAvatar avatarPath={s.avatar_url} name={s.display_name || s.username} className="w-14 h-14 ring-2 ring-background" />
             </span>
