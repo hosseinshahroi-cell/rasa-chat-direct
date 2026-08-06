@@ -19,6 +19,7 @@ export function IncomingCallListener() {
   const [incoming, setIncoming] = useState<IncomingCall | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const ringRef = useRef<HTMLAudioElement | null>(null);
+  const handledRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -34,8 +35,11 @@ export function IncomingCallListener() {
           async (payload) => {
             const sig = payload.new as { kind: string; call_id: string; from_user: string; payload: { video?: boolean } | null };
             if (sig.kind !== "offer") return;
+            // ignore duplicate offers for a call we already handled
+            if (handledRef.current.has(sig.call_id)) return;
             // skip if already on call page for this caller
             if (window.location.pathname.startsWith("/call/")) return;
+            handledRef.current.add(sig.call_id);
             const { data: p } = await supabase
               .from("profiles")
               .select("username, display_name, avatar_url")
@@ -61,6 +65,8 @@ export function IncomingCallListener() {
             .limit(1)
             .maybeSingle();
           if (!recent || window.location.pathname.startsWith("/call/")) return;
+          if (handledRef.current.has(recent.call_id)) return;
+          handledRef.current.add(recent.call_id);
           const { data: p } = await supabase
             .from("profiles")
             .select("username, display_name, avatar_url")
