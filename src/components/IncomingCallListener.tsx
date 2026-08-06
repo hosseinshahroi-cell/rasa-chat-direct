@@ -65,6 +65,8 @@ export function IncomingCallListener() {
             .limit(1)
             .maybeSingle();
           if (!recent || window.location.pathname.startsWith("/call/")) return;
+          if (handledRef.current.has(recent.call_id)) return;
+          handledRef.current.add(recent.call_id);
           const { data: p } = await supabase
             .from("profiles")
             .select("username, display_name, avatar_url")
