@@ -19,6 +19,7 @@ export function IncomingCallListener() {
   const [incoming, setIncoming] = useState<IncomingCall | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const ringRef = useRef<HTMLAudioElement | null>(null);
+  const handledRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
