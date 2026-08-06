@@ -16,6 +16,9 @@ import AgoraRTC, {
   type ICameraVideoTrack,
   type IAgoraRTCRemoteUser,
 } from "agora-rtc-sdk-ng";
+import {
+  acquireSession, releaseSession, createProcessedMic, playRemoteAudio, stopRemoteAudio,
+} from "@/lib/agora-session";
 
 interface CallSearch { incoming?: string; video?: string }
 
