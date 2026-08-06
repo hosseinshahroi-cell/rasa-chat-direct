@@ -61,11 +61,14 @@ function CallView() {
   const callIdRef = useRef<string>(incoming || crypto.randomUUID());
   const isCallerRef = useRef<boolean>(!incoming);
   const endedRef = useRef(false);
-  const joinedRef = useRef(false);
-  const playedAudioRef = useRef<Set<string>>(new Set());
   const secondsRef = useRef(0);
   const facingRef = useRef<"user" | "environment">("user");
-
+  const fetchTokenRef = useRef(fetchToken);
+  fetchTokenRef.current = fetchToken;
+  const isVideoRef = useRef(isVideoCall);
+  isVideoRef.current = isVideoCall;
+  const peerIdRef = useRef(peerId);
+  peerIdRef.current = peerId;
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setMe(data.user?.id ?? null));
@@ -82,70 +85,51 @@ function CallView() {
   useEffect(() => {
     if (!me) return;
     let cancelled = false;
+    const callId = callIdRef.current;
 
     const sendSignal = async (kind: string, payload: Record<string, unknown> = {}) => {
       await supabase.from("call_signals").insert({
-        from_user: me, to_user: peerId, call_id: callIdRef.current, kind,
+        from_user: me, to_user: peerIdRef.current, call_id: callId, kind,
         payload: payload as never,
       });
     };
 
     const sendSystemMessage = async (content: string) => {
-      if (!isCallerRef.current || !me) return;
+      if (!isCallerRef.current) return;
       await supabase.from("messages").insert({
-        sender_id: me, receiver_id: peerId, content,
+        sender_id: me, receiver_id: peerIdRef.current, content,
       });
     };
 
     const joinAgora = async () => {
-      if (cancelled || joinedRef.current) return;
-      joinedRef.current = true;
       try {
         const uid = uuidToUid(me);
-        const channel = callIdRef.current;
-        // fetch token + open mic in parallel to cut startup latency
-        const [tokenRes, mic] = await Promise.all([
-          fetchToken({ data: { channel, uid } }),
-          AgoraRTC.createMicrophoneAudioTrack({
-            // low-latency mono speech profile
-            encoderConfig: {
-              sampleRate: 48000,
-              stereo: false,
-              bitrate: 32,
-            },
-            // WebRTC audio processing: echo cancel / noise suppress / auto gain
-            AEC: true,
-            ANS: true,
-            AGC: true,
-          }),
-        ]);
-        if (cancelled) { mic.stop(); mic.close(); return; }
-        // make sure the browser constraints are really applied (speaker mode too)
-        try {
-          await mic.getMediaStreamTrack().applyConstraints({
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-            channelCount: 1,
-          } as MediaTrackConstraints);
-        } catch { /* some browsers reject re-apply; agora flags already set */ }
-        micRef.current = mic;
-        // never play our own mic locally – that is the main source of echo
-        mic.stop();
-        const { appId, token } = tokenRes;
-        if (clientRef.current) { try { await clientRef.current.leave(); } catch { /* noop */ } clientRef.current.removeAllListeners(); }
-        const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+        // single serialized session per channel – never two clients at once
+        const session = await acquireSession(callId);
+        if (cancelled) return;
+        if (session.joined) {
+          clientRef.current = session.client;
+          micRef.current = session.mic;
+          camRef.current = session.cam;
+          setStatus(session.client.remoteUsers.length > 0 ? "connected" : "calling");
+          return;
+        }
+        const client = session.client;
         clientRef.current = client;
+
+        const [tokenRes, mic] = await Promise.all([
+          fetchTokenRef.current({ data: { channel: callId, uid } }),
+          session.mic ? Promise.resolve(session.mic) : createProcessedMic(),
+        ]);
+        if (cancelled) { await releaseSession(callId); return; }
+        session.mic = mic;
+        micRef.current = mic;
+        const { appId, token } = tokenRes;
+
+        client.removeAllListeners();
         client.on("user-published", async (user: IAgoraRTCRemoteUser, mediaType) => {
           await client.subscribe(user, mediaType);
-          if (mediaType === "audio") {
-            const key = `${user.uid}`;
-            // guard against playing the same remote audio twice (double voice / echo)
-            if (!playedAudioRef.current.has(key)) {
-              playedAudioRef.current.add(key);
-              user.audioTrack?.play();
-            }
-          }
+          if (mediaType === "audio") playRemoteAudio(session, `${user.uid}`, user.audioTrack);
           if (mediaType === "video") {
             setRemoteVideoOn(true);
             setTimeout(() => {
@@ -154,34 +138,33 @@ function CallView() {
           }
           setStatus("connected");
         });
-
         client.on("user-unpublished", (u, mediaType) => {
           if (mediaType === "video") setRemoteVideoOn(false);
-          if (mediaType === "audio") {
-            u.audioTrack?.stop();
-            playedAudioRef.current.delete(`${u.uid}`);
-          }
+          if (mediaType === "audio") stopRemoteAudio(session, `${u.uid}`);
         });
-
         client.on("user-joined", () => setStatus("connected"));
-        client.on("user-left", () => {
+        client.on("user-left", (u) => {
+          stopRemoteAudio(session, `${u.uid}`);
           if (!endedRef.current) { endedRef.current = true; setStatus("ended"); }
         });
         client.on("connection-state-change", (cur) => {
           if (cur === "DISCONNECTED" && !endedRef.current) { endedRef.current = true; setStatus("ended"); }
         });
-        await client.join(appId, channel, token, uid);
-        if (cancelled) return;
-        // publish audio first so voice works instantly, camera follows
+
+        await client.join(appId, callId, token, uid);
+        session.joined = true;
+        if (cancelled) { await releaseSession(callId); return; }
         await client.publish([mic]);
         if (client.remoteUsers.length > 0) setStatus("connected");
-        if (isVideoCall) {
+
+        if (isVideoRef.current && !session.cam) {
           try {
             const cam = await AgoraRTC.createCameraVideoTrack({
               encoderConfig: "720p_2",
               facingMode: facingRef.current,
             });
             if (cancelled) { cam.stop(); cam.close(); return; }
+            session.cam = cam;
             camRef.current = cam;
             setCamOn(true);
             await client.publish([cam]);
@@ -202,15 +185,14 @@ function CallView() {
     };
 
     (async () => {
-      // start media + agora right away; signaling runs in parallel
       setStatus(isCallerRef.current ? "calling" : "ringing");
       const joining = joinAgora();
 
       const ch = supabase
-        .channel(`call-${callIdRef.current}-${me}`)
+        .channel(`call-${callId}-${me}`)
         .on(
           "postgres_changes",
-          { event: "INSERT", schema: "public", table: "call_signals", filter: `call_id=eq.${callIdRef.current}` },
+          { event: "INSERT", schema: "public", table: "call_signals", filter: `call_id=eq.${callId}` },
           (payload) => {
             const sig = payload.new as { kind: string; from_user: string };
             if (sig.from_user === me) return;
@@ -224,10 +206,10 @@ function CallView() {
         .subscribe(async (subStatus) => {
           if (subStatus !== "SUBSCRIBED" || cancelled) return;
           if (isCallerRef.current) {
-            await sendSignal("offer", { channel: callIdRef.current, video: isVideoCall });
-            await sendSystemMessage(isVideoCall ? "🎥 تماس تصویری شروع شد" : "📞 تماس صوتی شروع شد");
+            await sendSignal("offer", { channel: callId, video: isVideoRef.current });
+            await sendSystemMessage(isVideoRef.current ? "🎥 تماس تصویری شروع شد" : "📞 تماس صوتی شروع شد");
           } else {
-            await sendSignal("answer", { channel: callIdRef.current });
+            await sendSignal("answer", { channel: callId });
           }
         });
       channelRef.current = ch;
@@ -238,38 +220,19 @@ function CallView() {
     return () => {
       cancelled = true;
       const durationSec = secondsRef.current;
+      const wasVideo = isVideoRef.current;
       (async () => {
-        try {
-          if (clientRef.current) {
-            for (const u of clientRef.current.remoteUsers) u.audioTrack?.stop();
-          }
-          playedAudioRef.current.clear();
-          if (micRef.current) {
-            micRef.current.stop();
-            micRef.current.getMediaStreamTrack().stop();
-            micRef.current.close();
-            micRef.current = null;
-          }
-          if (camRef.current) {
-            camRef.current.stop();
-            camRef.current.getMediaStreamTrack().stop();
-            camRef.current.close();
-            camRef.current = null;
-          }
-          if (clientRef.current) {
-            await clientRef.current.leave();
-            clientRef.current.removeAllListeners();
-            clientRef.current = null;
-          }
-          joinedRef.current = false;
-        } catch { /* noop */ }
+        micRef.current = null;
+        camRef.current = null;
+        clientRef.current = null;
+        await releaseSession(callId);
 
-        if (channelRef.current) supabase.removeChannel(channelRef.current);
+        if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null; }
         try { await sendSignal("hangup"); } catch { /* noop */ }
         if (isCallerRef.current) {
           const m = Math.floor(durationSec / 60);
           const s = durationSec % 60;
-          const kind = isVideoCall ? "🎥 تماس تصویری" : "📞 تماس صوتی";
+          const kind = wasVideo ? "🎥 تماس تصویری" : "📞 تماس صوتی";
           const label = durationSec > 0
             ? `${kind} پایان یافت • مدت ${m}:${String(s).padStart(2, "0")}`
             : `${kind} بدون پاسخ`;
@@ -277,7 +240,8 @@ function CallView() {
         }
       })();
     };
-  }, [me, peerId, navigate, fetchToken, isVideoCall]);
+  }, [me]);
+
 
   const toggleMute = () => {
     const next = !muted;
