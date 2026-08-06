@@ -268,6 +268,8 @@ function CallView() {
         facingMode: facingRef.current,
       });
       camRef.current = cam;
+      const s = getSession();
+      if (s) s.cam = cam;
       await client.publish([cam]);
       setCamOn(true);
       setTimeout(() => {
