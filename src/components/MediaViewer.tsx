@@ -65,20 +65,20 @@ export function MediaViewer({ items, initialIndex = 0, onClose, onDownload }: Pr
     <div className="fixed inset-0 z-[120] bg-black select-none" dir="rtl">
       {/* slider */}
       <div
+        dir="ltr"
         className="absolute inset-0 flex touch-pan-y"
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerCancel={onUp}
         style={{
-          transform: `translateX(${-index * 100}%) translateX(${drag}px)`,
+          transform: `translateX(${(-index * 100) / items.length}%) translateX(${drag}px)`,
           transition: drag ? "none" : "transform 220ms ease-out",
           width: `${items.length * 100}%`,
-          flexDirection: "row-reverse",
         }}
       >
         {items.map((it, i) => (
-          <div key={`${it.url}-${i}`} className="w-full h-full shrink-0 flex items-center justify-center" style={{ width: `${100 / items.length}%` }}>
+          <div key={`${it.url}-${i}`} className="h-full shrink-0 flex items-center justify-center" style={{ width: `${100 / items.length}%` }}>
             {it.type === "video" ? (
               <video
                 src={it.url}
