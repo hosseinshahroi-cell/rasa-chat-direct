@@ -25,6 +25,7 @@ import { ReportDialog } from "@/components/ReportDialog";
 import { ForwardDialog } from "@/components/ForwardDialog";
 import { MessageText } from "@/components/MessageText";
 import { FileAttachment } from "@/components/FileAttachment";
+import { MediaViewer, type MediaItem } from "@/components/MediaViewer";
 import { readSnapshot, writeSnapshot, getCachedUserId, setCachedUserId } from "@/lib/cache";
 
 const REACTION_EMOJIS = ["❤️", "👍", "👎", "😂", "😮", "😢", "🔥", "🙏"];
@@ -51,6 +52,7 @@ interface Message {
   deleted_for: string[];
   is_pinned: boolean;
   is_announcement: boolean;
+  media_group_id?: string | null;
 }
 
 function ChatView() {
@@ -65,7 +67,7 @@ function ChatView() {
   const [signedAttachments, setSignedAttachments] = useState<Record<string, string>>({});
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [editing, setEditing] = useState<Message | null>(null);
-  const [imageView, setImageView] = useState<{ url: string; name: string } | null>(null);
+  const [viewer, setViewer] = useState<{ items: MediaItem[]; index: number } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Message | null>(null);
   const [forwardTarget, setForwardTarget] = useState<Message | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
@@ -382,18 +384,78 @@ function ChatView() {
     await sendMessage(null, { url: path, type });
   };
 
-  const onFile = (e: React.ChangeEvent<HTMLInputElement>, kind: "media" | "file") => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    if (f.size > 100 * 1024 * 1024) { toast.error("حداکثر ۱۰۰ مگابایت"); return; }
-    let type: "image" | "video" | "audio" | "file" = "file";
-    if (kind === "media") {
-      if (f.type.startsWith("video/")) type = "video";
-      else if (f.type.startsWith("image/")) type = "image";
-      else if (f.type.startsWith("audio/")) type = "audio";
+  const uploadOne = async (file: File) => {
+    const ext = file.name.split(".").pop() || "bin";
+    const path = `${me}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const { error } = await supabase.storage.from("chat-attachments").upload(path, file);
+    if (error) throw error;
+    return { path, type: file.type.startsWith("video/") ? "video" : "image" };
+  };
+
+  /** upload several photos/videos at once and send them as a single album */
+  const sendAlbum = async (files: File[]) => {
+    if (!me) return;
+    const key = ["messages", me, otherId] as const;
+    const groupId = crypto.randomUUID();
+    setSending(true);
+    try {
+      const uploads = await Promise.all(files.map(uploadOne));
+      const base = Date.now();
+      const optimistic: Message[] = uploads.map((u, i) => ({
+        id: `temp-${groupId}-${i}`,
+        sender_id: me,
+        receiver_id: otherId,
+        content: null,
+        attachment_url: u.path,
+        attachment_type: u.type,
+        created_at: new Date(base + i).toISOString(),
+        read_at: null,
+        reply_to_id: null,
+        edited_at: null,
+        deleted_for_everyone: false,
+        deleted_for: [],
+        is_pinned: false,
+        is_announcement: false,
+        media_group_id: groupId,
+      }));
+      qc.setQueryData<Message[]>(key, (cur) => [...(cur ?? []), ...optimistic]);
+      const { error } = await supabase.from("messages").insert(
+        uploads.map((u) => ({
+          sender_id: me,
+          receiver_id: otherId,
+          content: null,
+          attachment_url: u.path,
+          attachment_type: u.type,
+          media_group_id: groupId,
+        })) as never,
+      );
+      if (error) {
+        qc.setQueryData<Message[]>(key, (cur) => (cur ?? []).filter((m) => m.media_group_id !== groupId));
+        throw error;
+      }
+      qc.invalidateQueries({ queryKey: key });
+      qc.invalidateQueries({ queryKey: ["chats"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "خطا در ارسال عکس‌ها");
+    } finally {
+      setSending(false);
     }
-    uploadAndSend(f, type);
+  };
+
+  const onFile = (e: React.ChangeEvent<HTMLInputElement>, kind: "media" | "file") => {
+    const files = Array.from(e.target.files || []);
     e.target.value = "";
+    if (!files.length) return;
+    if (files.some((f) => f.size > 100 * 1024 * 1024)) { toast.error("حداکثر ۱۰۰ مگابایت"); return; }
+    if (kind === "media") {
+      const media = files.filter((f) => f.type.startsWith("image/") || f.type.startsWith("video/"));
+      const rest = files.filter((f) => !media.includes(f));
+      if (media.length > 1) void sendAlbum(media);
+      else if (media.length === 1) uploadAndSend(media[0], media[0].type.startsWith("video/") ? "video" : "image");
+      rest.forEach((f) => uploadAndSend(f, f.type.startsWith("audio/") ? "audio" : "file"));
+      return;
+    }
+    files.forEach((f) => uploadAndSend(f, "file"));
   };
 
   const directDownload = async (url: string, name: string) => {
@@ -711,7 +773,7 @@ function ChatView() {
                 <ImageIcon className="w-5 h-5" />
               </Button>
               <input ref={fileRef} type="file" hidden onChange={(e) => onFile(e, "file")} />
-              <input ref={imgRef} type="file" accept="image/*,video/*" hidden onChange={(e) => onFile(e, "media")} />
+              <input ref={imgRef} type="file" accept="image/*,video/*" multiple hidden onChange={(e) => onFile(e, "media")} />
             </>
           )}
           <Input
@@ -743,18 +805,14 @@ function ChatView() {
       </div>
       )}
 
-      <Dialog open={!!imageView} onOpenChange={(o) => !o && setImageView(null)}>
-        <DialogContent className="max-w-3xl p-2 bg-black/95 border-0">
-          {imageView && (
-            <div className="flex flex-col items-center gap-3">
-              <img src={imageView.url} alt="" className="max-h-[80vh] w-auto rounded" />
-              <Button variant="secondary" onClick={() => directDownload(imageView.url, imageView.name.split("/").pop() || "image")}>
-                <Download className="w-4 h-4 ml-2" /> دانلود
-              </Button>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      {viewer && (
+        <MediaViewer
+          items={viewer.items}
+          initialIndex={viewer.index}
+          onClose={() => setViewer(null)}
+          onDownload={directDownload}
+        />
+      )}
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
         <AlertDialogContent>
