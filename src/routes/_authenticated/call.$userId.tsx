@@ -124,7 +124,7 @@ function CallView() {
           fetchTokenRef.current({ data: { channel: callId, uid } }),
           session.mic ? Promise.resolve(session.mic) : createProcessedMic(),
         ]);
-        if (cancelled) { await releaseSession(callId); return; }
+        if (cancelled) return;
         session.mic = mic;
         micRef.current = mic;
         const { appId, token } = tokenRes;
@@ -156,7 +156,7 @@ function CallView() {
 
         await client.join(appId, callId, token, uid);
         session.joined = true;
-        if (cancelled) { await releaseSession(callId); return; }
+        if (cancelled) return;
         await client.publish([mic]);
         if (client.remoteUsers.length > 0) setStatus("connected");
 
