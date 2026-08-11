@@ -15,7 +15,6 @@ import { toast } from "sonner";
 import {
   Popover, PopoverContent, PopoverTrigger,
 } from "@/components/ui/popover";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -181,6 +180,32 @@ function ChatView() {
     () => messages.filter((m) => m.is_pinned && !m.deleted_for_everyone),
     [messages],
   );
+
+  type Block =
+    | { kind: "single"; key: string; message: Message }
+    | { kind: "album"; key: string; items: Message[] };
+
+  /** consecutive photos/videos sent together collapse into one album bubble */
+  const blocks = useMemo<Block[]>(() => {
+    const out: Block[] = [];
+    for (const m of messages) {
+      const gid = m.media_group_id;
+      const isMedia = !m.deleted_for_everyone && (m.attachment_type === "image" || m.attachment_type === "video");
+      const last = out[out.length - 1];
+      if (gid && isMedia) {
+        if (last && last.kind === "album" && last.key === `album-${gid}`) {
+          last.items.push(m);
+          continue;
+        }
+        out.push({ kind: "album", key: `album-${gid}`, items: [m] });
+        continue;
+      }
+      out.push({ kind: "single", key: m.id, message: m });
+    }
+    return out.map((b) => (b.kind === "album" && b.items.length === 1
+      ? { kind: "single" as const, key: b.items[0].id, message: b.items[0] }
+      : b));
+  }, [messages]);
 
   const messageIds = useMemo(() => messages.map((m) => m.id), [messages]);
 
@@ -686,7 +711,27 @@ function ChatView() {
             </div>
           )}
 
-          {messages.map((m) => {
+          {blocks.map((b) => {
+            if (b.kind === "album") {
+              const items: MediaItem[] = b.items
+                .map((m) => ({
+                  url: m.attachment_url ? signedAttachments[m.attachment_url] : "",
+                  name: (m.attachment_url || "media").split("/").pop() || "media",
+                  type: (m.attachment_type === "video" ? "video" : "image") as "image" | "video",
+                }))
+                .filter((x) => !!x.url);
+              const mine = b.items[0].sender_id === me;
+              return (
+                <AlbumBubble
+                  key={b.key}
+                  items={items}
+                  mine={mine}
+                  time={formatChatTime(b.items[b.items.length - 1].created_at)}
+                  onOpen={(i) => setViewer({ items, index: i })}
+                />
+              );
+            }
+            const m = b.message;
             const mine = m.sender_id === me;
             const signed = m.attachment_url ? signedAttachments[m.attachment_url] : null;
             const replied = m.reply_to_id ? messageById.get(m.reply_to_id) : null;
@@ -713,7 +758,16 @@ function ChatView() {
                     );
                   } else toast.error("متنی برای کپی نیست");
                 }}
-                onImageClick={(url) => setImageView({ url, name: m.attachment_url || "image" })}
+                onImageClick={(url) =>
+                  setViewer({
+                    items: [{
+                      url,
+                      name: (m.attachment_url || "media").split("/").pop() || "media",
+                      type: m.attachment_type === "video" ? "video" : "image",
+                    }],
+                    index: 0,
+                  })
+                }
                 onDownload={directDownload}
               />
             );
@@ -1025,3 +1079,46 @@ function MessageBubble({
   );
 }
 
+
+function AlbumBubble({
+  items, mine, time, onOpen,
+}: {
+  items: MediaItem[];
+  mine: boolean;
+  time: string;
+  onOpen: (index: number) => void;
+}) {
+  const cols = items.length === 1 ? 1 : items.length === 2 ? 2 : items.length === 4 ? 2 : 3;
+  return (
+    <div className={`flex ${mine ? "justify-start" : "justify-end"}`}>
+      <div
+        className={`max-w-[78%] rounded-2xl p-1 ${
+          mine
+            ? "bg-[color:var(--color-chat-bubble-me)] text-[color:var(--color-chat-bubble-me-foreground)] rounded-bl-sm"
+            : "bg-[color:var(--color-chat-bubble-other)] text-[color:var(--color-chat-bubble-other-foreground)] rounded-br-sm"
+        }`}
+      >
+        <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+          {items.map((it, i) => (
+            <button
+              key={`${it.url}-${i}`}
+              type="button"
+              onClick={() => onOpen(i)}
+              className="relative overflow-hidden rounded-lg aspect-square bg-black/10"
+            >
+              {it.type === "video" ? (
+                <>
+                  <video src={it.url} preload="metadata" muted playsInline className="w-full h-full object-cover" />
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/25 text-white text-lg">▶</span>
+                </>
+              ) : (
+                <img src={it.url} alt="" loading="lazy" className="w-full h-full object-cover" />
+              )}
+            </button>
+          ))}
+        </div>
+        <div className={`text-[10px] mt-1 px-1 ${mine ? "opacity-80" : "text-muted-foreground"}`}>{time}</div>
+      </div>
+    </div>
+  );
+}
