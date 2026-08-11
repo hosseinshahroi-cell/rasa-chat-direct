@@ -546,6 +546,20 @@ function StoriesBar({ me }: { me: string | null }) {
   const [uploading, setUploading] = useState(false);
   const [activeUser, setActiveUser] = useState<string | null>(null);
 
+  const { data: myProfile } = useQuery<{ avatar_url: string | null; display_name: string | null; username: string } | null>({
+    queryKey: ["profile", me],
+    enabled: !!me,
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("profiles")
+        .select("avatar_url, display_name, username")
+        .eq("id", me!)
+        .maybeSingle();
+      return data ?? null;
+    },
+  });
+
   const [showViewers, setShowViewers] = useState(false);
   const [viewers, setViewers] = useState<StoryViewer[]>([]);
 
@@ -643,8 +657,15 @@ function StoriesBar({ me }: { me: string | null }) {
     <div className="border-b bg-card/60 px-3 py-3 overflow-x-auto">
       <div className="flex items-center gap-3 min-w-max">
         <button onClick={() => fileRef.current?.click()} disabled={uploading || !me} className="flex flex-col items-center gap-1 text-xs text-muted-foreground disabled:opacity-50">
-          <span className="w-14 h-14 rounded-full border-2 border-dashed border-primary/50 bg-primary/10 text-primary flex items-center justify-center">
-            {uploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-6 h-6" />}
+          <span className="relative">
+            <UserAvatar
+              avatarPath={myProfile?.avatar_url}
+              name={myProfile?.display_name || myProfile?.username}
+              className="w-14 h-14 ring-2 ring-background"
+            />
+            <span className="absolute -bottom-0.5 -left-0.5 w-5 h-5 rounded-full bg-primary text-primary-foreground border-2 border-background flex items-center justify-center">
+              {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+            </span>
           </span>
           استوری من
         </button>
