@@ -158,6 +158,24 @@ function CallView() {
         session.joined = true;
         if (cancelled) return;
         await client.publish([mic]);
+        // pick up peers that published before our listeners were attached
+        for (const u of client.remoteUsers) {
+          if (u.hasAudio) {
+            try {
+              await client.subscribe(u, "audio");
+              playRemoteAudio(session, `${u.uid}`, u.audioTrack);
+            } catch { /* noop */ }
+          }
+          if (u.hasVideo) {
+            try {
+              await client.subscribe(u, "video");
+              setRemoteVideoOn(true);
+              setTimeout(() => {
+                if (remoteVideoRef.current) u.videoTrack?.play(remoteVideoRef.current, { fit: "contain" });
+              }, 60);
+            } catch { /* noop */ }
+          }
+        }
         if (client.remoteUsers.length > 0) setStatus("connected");
 
         if (isVideoRef.current && !session.cam) {
