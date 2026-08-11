@@ -40,7 +40,7 @@ export function StoryPlayer({
 }: Props) {
   const [index, setIndex] = useState(initialIndex);
   const [progress, setProgress] = useState(0);
-  const [muted, setMuted] = useState(true);
+  const [muted, setMuted] = useState(false);
   const [paused, setPaused] = useState(false);
   const [urls, setUrls] = useState<Record<string, string>>({});
 
@@ -127,7 +127,12 @@ export function StoryPlayer({
     const v = videoRef.current;
     if (!v) return;
     if (paused) v.pause();
-    else void v.play().catch(() => {});
+    else void v.play().catch(() => {
+      // autoplay with sound blocked -> fall back to muted playback
+      setMuted(true);
+      v.muted = true;
+      void v.play().catch(() => {});
+    });
   }, [paused, src, index]);
 
   // keyboard
@@ -188,11 +193,11 @@ export function StoryPlayer({
           preload="auto"
           disablePictureInPicture
           onEnded={goNext}
-          className="absolute inset-0 w-full h-full object-cover"
+          className="absolute inset-0 w-full h-full object-contain"
         />
       )}
       {src && story.media_type === "image" && (
-        <img src={src} alt="استوری" className="absolute inset-0 w-full h-full object-cover" />
+        <img src={src} alt="استوری" className="absolute inset-0 w-full h-full object-contain" />
       )}
 
       {/* gesture layer */}
