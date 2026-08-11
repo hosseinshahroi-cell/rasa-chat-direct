@@ -136,7 +136,7 @@ function CallView() {
           if (mediaType === "video") {
             setRemoteVideoOn(true);
             setTimeout(() => {
-              if (remoteVideoRef.current) user.videoTrack?.play(remoteVideoRef.current, { fit: "cover" });
+              if (remoteVideoRef.current) user.videoTrack?.play(remoteVideoRef.current, { fit: "contain" });
             }, 60);
           }
           setStatus("connected");
@@ -172,7 +172,7 @@ function CallView() {
             setCamOn(true);
             await client.publish([cam]);
             setTimeout(() => {
-              if (localVideoRef.current) cam.play(localVideoRef.current, { fit: "cover", mirror: true });
+              if (localVideoRef.current) cam.play(localVideoRef.current, { fit: "contain", mirror: true });
             }, 60);
           } catch {
             toast.error("دسترسی به دوربین داده نشد");
@@ -259,7 +259,7 @@ function CallView() {
       const next = !camOn;
       await camRef.current.setEnabled(next);
       setCamOn(next);
-      if (next && localVideoRef.current) camRef.current.play(localVideoRef.current, { fit: "cover", mirror: true });
+      if (next && localVideoRef.current) camRef.current.play(localVideoRef.current, { fit: "contain", mirror: true });
       return;
     }
     try {
@@ -273,7 +273,7 @@ function CallView() {
       await client.publish([cam]);
       setCamOn(true);
       setTimeout(() => {
-        if (localVideoRef.current) cam.play(localVideoRef.current, { fit: "cover", mirror: true });
+        if (localVideoRef.current) cam.play(localVideoRef.current, { fit: "contain", mirror: true });
       }, 60);
     } catch {
       toast.error("دسترسی به دوربین داده نشد");
