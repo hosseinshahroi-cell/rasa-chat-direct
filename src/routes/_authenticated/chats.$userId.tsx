@@ -15,7 +15,6 @@ import { toast } from "sonner";
 import {
   Popover, PopoverContent, PopoverTrigger,
 } from "@/components/ui/popover";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -25,6 +24,7 @@ import { ReportDialog } from "@/components/ReportDialog";
 import { ForwardDialog } from "@/components/ForwardDialog";
 import { MessageText } from "@/components/MessageText";
 import { FileAttachment } from "@/components/FileAttachment";
+import { MediaViewer, type MediaItem } from "@/components/MediaViewer";
 import { readSnapshot, writeSnapshot, getCachedUserId, setCachedUserId } from "@/lib/cache";
 
 const REACTION_EMOJIS = ["❤️", "👍", "👎", "😂", "😮", "😢", "🔥", "🙏"];
@@ -51,6 +51,7 @@ interface Message {
   deleted_for: string[];
   is_pinned: boolean;
   is_announcement: boolean;
+  media_group_id?: string | null;
 }
 
 function ChatView() {
@@ -65,7 +66,7 @@ function ChatView() {
   const [signedAttachments, setSignedAttachments] = useState<Record<string, string>>({});
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [editing, setEditing] = useState<Message | null>(null);
-  const [imageView, setImageView] = useState<{ url: string; name: string } | null>(null);
+  const [viewer, setViewer] = useState<{ items: MediaItem[]; index: number } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Message | null>(null);
   const [forwardTarget, setForwardTarget] = useState<Message | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
@@ -179,6 +180,32 @@ function ChatView() {
     () => messages.filter((m) => m.is_pinned && !m.deleted_for_everyone),
     [messages],
   );
+
+  type Block =
+    | { kind: "single"; key: string; message: Message }
+    | { kind: "album"; key: string; items: Message[] };
+
+  /** consecutive photos/videos sent together collapse into one album bubble */
+  const blocks = useMemo<Block[]>(() => {
+    const out: Block[] = [];
+    for (const m of messages) {
+      const gid = m.media_group_id;
+      const isMedia = !m.deleted_for_everyone && (m.attachment_type === "image" || m.attachment_type === "video");
+      const last = out[out.length - 1];
+      if (gid && isMedia) {
+        if (last && last.kind === "album" && last.key === `album-${gid}`) {
+          last.items.push(m);
+          continue;
+        }
+        out.push({ kind: "album", key: `album-${gid}`, items: [m] });
+        continue;
+      }
+      out.push({ kind: "single", key: m.id, message: m });
+    }
+    return out.map((b) => (b.kind === "album" && b.items.length === 1
+      ? { kind: "single" as const, key: b.items[0].id, message: b.items[0] }
+      : b));
+  }, [messages]);
 
   const messageIds = useMemo(() => messages.map((m) => m.id), [messages]);
 
@@ -382,18 +409,78 @@ function ChatView() {
     await sendMessage(null, { url: path, type });
   };
 
-  const onFile = (e: React.ChangeEvent<HTMLInputElement>, kind: "media" | "file") => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    if (f.size > 100 * 1024 * 1024) { toast.error("حداکثر ۱۰۰ مگابایت"); return; }
-    let type: "image" | "video" | "audio" | "file" = "file";
-    if (kind === "media") {
-      if (f.type.startsWith("video/")) type = "video";
-      else if (f.type.startsWith("image/")) type = "image";
-      else if (f.type.startsWith("audio/")) type = "audio";
+  const uploadOne = async (file: File) => {
+    const ext = file.name.split(".").pop() || "bin";
+    const path = `${me}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const { error } = await supabase.storage.from("chat-attachments").upload(path, file);
+    if (error) throw error;
+    return { path, type: file.type.startsWith("video/") ? "video" : "image" };
+  };
+
+  /** upload several photos/videos at once and send them as a single album */
+  const sendAlbum = async (files: File[]) => {
+    if (!me) return;
+    const key = ["messages", me, otherId] as const;
+    const groupId = crypto.randomUUID();
+    setSending(true);
+    try {
+      const uploads = await Promise.all(files.map(uploadOne));
+      const base = Date.now();
+      const optimistic: Message[] = uploads.map((u, i) => ({
+        id: `temp-${groupId}-${i}`,
+        sender_id: me,
+        receiver_id: otherId,
+        content: null,
+        attachment_url: u.path,
+        attachment_type: u.type,
+        created_at: new Date(base + i).toISOString(),
+        read_at: null,
+        reply_to_id: null,
+        edited_at: null,
+        deleted_for_everyone: false,
+        deleted_for: [],
+        is_pinned: false,
+        is_announcement: false,
+        media_group_id: groupId,
+      }));
+      qc.setQueryData<Message[]>(key, (cur) => [...(cur ?? []), ...optimistic]);
+      const { error } = await supabase.from("messages").insert(
+        uploads.map((u) => ({
+          sender_id: me,
+          receiver_id: otherId,
+          content: null,
+          attachment_url: u.path,
+          attachment_type: u.type,
+          media_group_id: groupId,
+        })) as never,
+      );
+      if (error) {
+        qc.setQueryData<Message[]>(key, (cur) => (cur ?? []).filter((m) => m.media_group_id !== groupId));
+        throw error;
+      }
+      qc.invalidateQueries({ queryKey: key });
+      qc.invalidateQueries({ queryKey: ["chats"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "خطا در ارسال عکس‌ها");
+    } finally {
+      setSending(false);
     }
-    uploadAndSend(f, type);
+  };
+
+  const onFile = (e: React.ChangeEvent<HTMLInputElement>, kind: "media" | "file") => {
+    const files = Array.from(e.target.files || []);
     e.target.value = "";
+    if (!files.length) return;
+    if (files.some((f) => f.size > 100 * 1024 * 1024)) { toast.error("حداکثر ۱۰۰ مگابایت"); return; }
+    if (kind === "media") {
+      const media = files.filter((f) => f.type.startsWith("image/") || f.type.startsWith("video/"));
+      const rest = files.filter((f) => !media.includes(f));
+      if (media.length > 1) void sendAlbum(media);
+      else if (media.length === 1) uploadAndSend(media[0], media[0].type.startsWith("video/") ? "video" : "image");
+      rest.forEach((f) => uploadAndSend(f, f.type.startsWith("audio/") ? "audio" : "file"));
+      return;
+    }
+    files.forEach((f) => uploadAndSend(f, "file"));
   };
 
   const directDownload = async (url: string, name: string) => {
@@ -624,7 +711,27 @@ function ChatView() {
             </div>
           )}
 
-          {messages.map((m) => {
+          {blocks.map((b) => {
+            if (b.kind === "album") {
+              const items: MediaItem[] = b.items
+                .map((m) => ({
+                  url: m.attachment_url ? signedAttachments[m.attachment_url] : "",
+                  name: (m.attachment_url || "media").split("/").pop() || "media",
+                  type: (m.attachment_type === "video" ? "video" : "image") as "image" | "video",
+                }))
+                .filter((x) => !!x.url);
+              const mine = b.items[0].sender_id === me;
+              return (
+                <AlbumBubble
+                  key={b.key}
+                  items={items}
+                  mine={mine}
+                  time={formatChatTime(b.items[b.items.length - 1].created_at)}
+                  onOpen={(i) => setViewer({ items, index: i })}
+                />
+              );
+            }
+            const m = b.message;
             const mine = m.sender_id === me;
             const signed = m.attachment_url ? signedAttachments[m.attachment_url] : null;
             const replied = m.reply_to_id ? messageById.get(m.reply_to_id) : null;
@@ -651,7 +758,16 @@ function ChatView() {
                     );
                   } else toast.error("متنی برای کپی نیست");
                 }}
-                onImageClick={(url) => setImageView({ url, name: m.attachment_url || "image" })}
+                onImageClick={(url) =>
+                  setViewer({
+                    items: [{
+                      url,
+                      name: (m.attachment_url || "media").split("/").pop() || "media",
+                      type: m.attachment_type === "video" ? "video" : "image",
+                    }],
+                    index: 0,
+                  })
+                }
                 onDownload={directDownload}
               />
             );
@@ -711,7 +827,7 @@ function ChatView() {
                 <ImageIcon className="w-5 h-5" />
               </Button>
               <input ref={fileRef} type="file" hidden onChange={(e) => onFile(e, "file")} />
-              <input ref={imgRef} type="file" accept="image/*,video/*" hidden onChange={(e) => onFile(e, "media")} />
+              <input ref={imgRef} type="file" accept="image/*,video/*" multiple hidden onChange={(e) => onFile(e, "media")} />
             </>
           )}
           <Input
@@ -743,18 +859,14 @@ function ChatView() {
       </div>
       )}
 
-      <Dialog open={!!imageView} onOpenChange={(o) => !o && setImageView(null)}>
-        <DialogContent className="max-w-3xl p-2 bg-black/95 border-0">
-          {imageView && (
-            <div className="flex flex-col items-center gap-3">
-              <img src={imageView.url} alt="" className="max-h-[80vh] w-auto rounded" />
-              <Button variant="secondary" onClick={() => directDownload(imageView.url, imageView.name.split("/").pop() || "image")}>
-                <Download className="w-4 h-4 ml-2" /> دانلود
-              </Button>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      {viewer && (
+        <MediaViewer
+          items={viewer.items}
+          initialIndex={viewer.index}
+          onClose={() => setViewer(null)}
+          onDownload={directDownload}
+        />
+      )}
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
         <AlertDialogContent>
@@ -967,3 +1079,46 @@ function MessageBubble({
   );
 }
 
+
+function AlbumBubble({
+  items, mine, time, onOpen,
+}: {
+  items: MediaItem[];
+  mine: boolean;
+  time: string;
+  onOpen: (index: number) => void;
+}) {
+  const cols = items.length === 1 ? 1 : items.length === 2 ? 2 : items.length === 4 ? 2 : 3;
+  return (
+    <div className={`flex ${mine ? "justify-start" : "justify-end"}`}>
+      <div
+        className={`max-w-[78%] rounded-2xl p-1 ${
+          mine
+            ? "bg-[color:var(--color-chat-bubble-me)] text-[color:var(--color-chat-bubble-me-foreground)] rounded-bl-sm"
+            : "bg-[color:var(--color-chat-bubble-other)] text-[color:var(--color-chat-bubble-other-foreground)] rounded-br-sm"
+        }`}
+      >
+        <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+          {items.map((it, i) => (
+            <button
+              key={`${it.url}-${i}`}
+              type="button"
+              onClick={() => onOpen(i)}
+              className="relative overflow-hidden rounded-lg aspect-square bg-black/10"
+            >
+              {it.type === "video" ? (
+                <>
+                  <video src={it.url} preload="metadata" muted playsInline className="w-full h-full object-cover" />
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/25 text-white text-lg">▶</span>
+                </>
+              ) : (
+                <img src={it.url} alt="" loading="lazy" className="w-full h-full object-cover" />
+              )}
+            </button>
+          ))}
+        </div>
+        <div className={`text-[10px] mt-1 px-1 ${mine ? "opacity-80" : "text-muted-foreground"}`}>{time}</div>
+      </div>
+    </div>
+  );
+}
