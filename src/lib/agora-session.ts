@@ -28,16 +28,22 @@ export function getSession(): AgoraSession | null {
   return current;
 }
 
+let refs = 0;
+
 /**
  * Returns the live session for this channel, or creates a fresh one.
- * Any session for a different channel is fully torn down first.
+ * Ref-counted: StrictMode double mounts share one session.
  */
 export function acquireSession(channel: string): Promise<AgoraSession> {
   return serialize(async () => {
-    if (current && current.channel === channel) return current;
-    if (current) await teardown(current);
+    if (current && current.channel === channel) {
+      refs++;
+      return current;
+    }
+    if (current) { await teardown(current); refs = 0; }
     const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
     current = { channel, client, mic: null, cam: null, remoteAudio: new Map(), joined: false };
+    refs = 1;
     return current;
   });
 }
@@ -45,11 +51,14 @@ export function acquireSession(channel: string): Promise<AgoraSession> {
 export function releaseSession(channel: string): Promise<void> {
   return serialize(async () => {
     if (!current || current.channel !== channel) return;
+    refs = Math.max(0, refs - 1);
+    if (refs > 0) return;
     const s = current;
     current = null;
     await teardown(s);
   });
 }
+
 
 async function teardown(s: AgoraSession) {
   try {
