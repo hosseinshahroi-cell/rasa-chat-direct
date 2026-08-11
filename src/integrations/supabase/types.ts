@@ -206,6 +206,7 @@ export type Database = {
           id: string
           is_announcement: boolean
           is_pinned: boolean
+          media_group_id: string | null
           read_at: string | null
           receiver_id: string | null
           reply_to_id: string | null
@@ -224,6 +225,7 @@ export type Database = {
           id?: string
           is_announcement?: boolean
           is_pinned?: boolean
+          media_group_id?: string | null
           read_at?: string | null
           receiver_id?: string | null
           reply_to_id?: string | null
@@ -242,6 +244,7 @@ export type Database = {
           id?: string
           is_announcement?: boolean
           is_pinned?: boolean
+          media_group_id?: string | null
           read_at?: string | null
           receiver_id?: string | null
           reply_to_id?: string | null
