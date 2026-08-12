@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { RtcTokenBuilder, RtcRole } from "agora-token";
+import { buildAgoraToken } from "@/lib/agora.server";
 
 export const getAgoraToken = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -13,15 +13,4 @@ export const getAgoraToken = createServerFn({ method: "POST" })
     }
     return data;
   })
-  .handler(async ({ data }) => {
-    const appId = process.env.AGORA_APP_ID;
-    const appCert = process.env.AGORA_APP_CERTIFICATE;
-    if (!appId || !appCert) throw new Error("Agora keys not configured");
-    const expireSec = 3600;
-    const now = Math.floor(Date.now() / 1000);
-    const privExpire = now + expireSec;
-    const token = RtcTokenBuilder.buildTokenWithUid(
-      appId, appCert, data.channel, data.uid, RtcRole.PUBLISHER, privExpire, privExpire,
-    );
-    return { appId, token, uid: data.uid, channel: data.channel, expiresAt: privExpire };
-  });
+  .handler(async ({ data }) => buildAgoraToken(data.channel, data.uid));
