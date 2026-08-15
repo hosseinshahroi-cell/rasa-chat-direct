@@ -138,7 +138,7 @@ function CallView() {
         const attachUserMedia = async (u: IAgoraRTCRemoteUser, mediaType?: "audio" | "video") => {
           if ((mediaType === "audio" || (!mediaType && u.hasAudio)) && u.hasAudio) {
             try {
-              await client.subscribe(u, "audio");
+              if (!u.audioTrack) await client.subscribe(u, "audio");
               playRemoteAudio(session, `${u.uid}`, u.audioTrack);
               setStatus("connected");
             } catch (error) {
@@ -147,7 +147,7 @@ function CallView() {
           }
           if ((mediaType === "video" || (!mediaType && u.hasVideo)) && u.hasVideo) {
             try {
-              await client.subscribe(u, "video");
+              if (!u.videoTrack) await client.subscribe(u, "video");
               if (cancelled) return;
               setRemoteVideoOn(true);
               setStatus("connected");
