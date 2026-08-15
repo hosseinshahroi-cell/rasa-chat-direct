@@ -93,6 +93,7 @@ function CallView() {
   const peerIdRef = useRef(peerId);
   peerIdRef.current = peerId;
   const disconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mediaSyncTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setMe(data.user?.id ?? null));
@@ -134,28 +135,90 @@ function CallView() {
         const client = session.client;
         clientRef.current = client;
 
+        const attachUserMedia = async (u: IAgoraRTCRemoteUser, mediaType?: "audio" | "video") => {
+          if ((mediaType === "audio" || (!mediaType && u.hasAudio)) && u.hasAudio) {
+            try {
+              await client.subscribe(u, "audio");
+              playRemoteAudio(session, `${u.uid}`, u.audioTrack);
+              setStatus("connected");
+            } catch (error) {
+              console.warn("remote audio subscribe failed", error);
+            }
+          }
+          if ((mediaType === "video" || (!mediaType && u.hasVideo)) && u.hasVideo) {
+            try {
+              await client.subscribe(u, "video");
+              if (cancelled) return;
+              setRemoteVideoOn(true);
+              setStatus("connected");
+              requestAnimationFrame(() => {
+                void playInto(() => remoteVideoRef.current, u.videoTrack, {});
+              });
+            } catch (error) {
+              console.warn("remote video subscribe failed", error);
+            }
+          }
+        };
+
         const attachExisting = async () => {
           for (const u of client.remoteUsers) {
-            if (u.hasAudio) {
-              try {
-                await client.subscribe(u, "audio");
-                playRemoteAudio(session, `${u.uid}`, u.audioTrack);
-              } catch { /* noop */ }
-            }
-            if (u.hasVideo) {
-              try {
-                await client.subscribe(u, "video");
-                setRemoteVideoOn(true);
-                void playInto(() => remoteVideoRef.current, u.videoTrack, {});
-              } catch { /* noop */ }
-            }
+            await attachUserMedia(u);
           }
           if (client.remoteUsers.length > 0) setStatus("connected");
         };
 
+        // Listeners must be installed even when a StrictMode remount reuses an
+        // already joined session; otherwise the old cancelled render owns them.
+        client.removeAllListeners();
+        client.on("user-published", async (user: IAgoraRTCRemoteUser, mediaType) => {
+          await attachUserMedia(user, mediaType);
+        });
+        client.on("user-unpublished", (u, mediaType) => {
+          if (mediaType === "video") setRemoteVideoOn(false);
+          if (mediaType === "audio") stopRemoteAudio(session, `${u.uid}`);
+        });
+        client.on("user-joined", () => {
+          setStatus("connected");
+          void attachExisting();
+        });
+        client.on("user-left", (u, reason) => {
+          stopRemoteAudio(session, `${u.uid}`);
+          setRemoteVideoOn(false);
+          if (reason === "Quit" || reason === "ServerTimeOut") {
+            if (!endedRef.current) { endedRef.current = true; setStatus("ended"); }
+          }
+        });
+        client.on("connection-state-change", (cur) => {
+          if (disconnectTimerRef.current) { clearTimeout(disconnectTimerRef.current); disconnectTimerRef.current = null; }
+          if (cur === "CONNECTED") void attachExisting();
+          if (cur === "DISCONNECTED") {
+            disconnectTimerRef.current = setTimeout(() => {
+              if (client.connectionState === "DISCONNECTED" && !endedRef.current && !cancelled) {
+                endedRef.current = true; setStatus("ended");
+              }
+            }, 6000);
+          }
+        });
+        const renew = async () => {
+          try {
+            const fresh = await fetchTokenRef.current({ data: { channel: callId, uid } });
+            await client.renewToken(fresh.token);
+          } catch { /* noop */ }
+        };
+        client.on("token-privilege-will-expire", renew);
+        client.on("token-privilege-did-expire", renew);
+
+        // Publication events can race with joining/reconnection on mobile.
+        // Reconcile the SDK's authoritative remote-user list until teardown.
+        if (mediaSyncTimerRef.current) clearInterval(mediaSyncTimerRef.current);
+        mediaSyncTimerRef.current = setInterval(() => {
+          if (!cancelled && client.connectionState === "CONNECTED") void attachExisting();
+        }, 1000);
+
         if (session.joined) {
           micRef.current = session.mic;
           camRef.current = session.cam;
+          if (session.mic) await session.mic.setEnabled(true);
           if (session.cam) void playInto(() => localVideoRef.current, session.cam, { mirror: true });
           await attachExisting();
           setStatus((s) => (client.remoteUsers.length > 0 ? "connected" : s));
@@ -179,52 +242,11 @@ function CallView() {
         if (wantVideo && !cam) toast.error("دسترسی به دوربین داده نشد");
         const { appId, token } = tokenRes;
 
-        client.removeAllListeners();
-        client.on("user-published", async (user: IAgoraRTCRemoteUser, mediaType) => {
-          try { await client.subscribe(user, mediaType); } catch { return; }
-          if (mediaType === "audio") playRemoteAudio(session, `${user.uid}`, user.audioTrack);
-          if (mediaType === "video") {
-            setRemoteVideoOn(true);
-            void playInto(() => remoteVideoRef.current, user.videoTrack, {});
-          }
-          setStatus("connected");
-        });
-        client.on("user-unpublished", (u, mediaType) => {
-          if (mediaType === "video") setRemoteVideoOn(false);
-          if (mediaType === "audio") stopRemoteAudio(session, `${u.uid}`);
-        });
-        client.on("user-joined", () => setStatus("connected"));
-        client.on("user-left", (u, reason) => {
-          stopRemoteAudio(session, `${u.uid}`);
-          setRemoteVideoOn(false);
-          // ignore transient drops – only a real leave/ban ends the call
-          if (reason === "Quit" || reason === "ServerTimeOut") {
-            if (!endedRef.current) { endedRef.current = true; setStatus("ended"); }
-          }
-        });
-        client.on("connection-state-change", (cur) => {
-          if (disconnectTimerRef.current) { clearTimeout(disconnectTimerRef.current); disconnectTimerRef.current = null; }
-          if (cur === "DISCONNECTED") {
-            // give the SDK a grace period to reconnect before ending
-            disconnectTimerRef.current = setTimeout(() => {
-              if (client.connectionState === "DISCONNECTED" && !endedRef.current && !cancelled) {
-                endedRef.current = true; setStatus("ended");
-              }
-            }, 6000);
-          }
-        });
-        const renew = async () => {
-          try {
-            const fresh = await fetchTokenRef.current({ data: { channel: callId, uid } });
-            await client.renewToken(fresh.token);
-          } catch { /* noop */ }
-        };
-        client.on("token-privilege-will-expire", renew);
-        client.on("token-privilege-did-expire", renew);
-
         await client.join(appId, callId, token, uid);
         session.joined = true;
         if (cancelled) return;
+        await mic.setEnabled(true);
+        if (cam) await cam.setEnabled(true);
         await client.publish(cam ? [mic, cam] : [mic]);
         if (cam) void playInto(() => localVideoRef.current, cam, { mirror: true });
         await attachExisting();
@@ -275,6 +297,7 @@ function CallView() {
       const wasVideo = isVideoRef.current;
       const userEnded = userEndedRef.current;
       if (disconnectTimerRef.current) { clearTimeout(disconnectTimerRef.current); disconnectTimerRef.current = null; }
+      if (mediaSyncTimerRef.current) { clearInterval(mediaSyncTimerRef.current); mediaSyncTimerRef.current = null; }
       (async () => {
         micRef.current = null;
         camRef.current = null;
@@ -378,7 +401,7 @@ function CallView() {
     <div className="min-h-screen bg-gradient-to-b from-primary/20 via-background to-background flex flex-col relative overflow-hidden">
       {/* remote video always mounted & laid out so play() has a real container */}
       <div ref={remoteVideoRef} className="absolute inset-0 bg-black z-0" />
-      {!showRemoteVideo && <div className="absolute inset-0 bg-background z-0" />}
+      {!showRemoteVideo && <div className="absolute inset-0 bg-background z-[1] pointer-events-none" />}
 
       <header className="px-3 py-2.5 flex items-center gap-2 relative z-10">
         <Link to="/chats/$userId" params={{ userId: peerId }}>
