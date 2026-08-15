@@ -171,7 +171,9 @@ function CallView() {
         // already joined session; otherwise the old cancelled render owns them.
         client.removeAllListeners();
         client.on("user-published", async (user: IAgoraRTCRemoteUser, mediaType) => {
-          await attachUserMedia(user, mediaType);
+          if (mediaType === "audio" || mediaType === "video") {
+            await attachUserMedia(user, mediaType);
+          }
         });
         client.on("user-unpublished", (u, mediaType) => {
           if (mediaType === "video") setRemoteVideoOn(false);
