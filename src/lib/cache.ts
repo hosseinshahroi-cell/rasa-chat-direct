@@ -46,12 +46,14 @@ export function installQueryPersister(queryClient: QueryClient) {
       shouldDehydrateQuery: (q) => {
         const k = q.queryKey?.[0];
         return (
-          k === "chats" ||
-          k === "messages" ||
-          k === "profile" ||
-          k === "stories" ||
-          k === "my-groups" ||
-          k === "reactions"
+          q.state.status === "success" && (
+            k === "chats" ||
+            k === "messages" ||
+            k === "profile" ||
+            k === "stories" ||
+            k === "my-groups" ||
+            k === "reactions"
+          )
         );
       },
     },
