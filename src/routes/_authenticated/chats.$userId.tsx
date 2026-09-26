@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { formatDayLabel } from "@/lib/format";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -711,7 +712,17 @@ function ChatView() {
             </div>
           )}
 
-          {blocks.map((b) => {
+          {blocks.map((b, bi) => {
+            const dayOf = (x: typeof b) => new Date((x.kind === "album" ? x.items[0] : x.message).created_at).toDateString();
+            const showDay = bi === 0 || dayOf(blocks[bi - 1]) !== dayOf(b);
+            const k = b.kind === "album" ? b.key : b.message.id;
+            return <Fragment key={k}>{showDay && (
+              <div className="flex justify-center my-3">
+                <span className="text-[11px] px-3 py-1 rounded-full bg-muted text-muted-foreground">
+                  {formatDayLabel((b.kind === "album" ? b.items[0] : b.message).created_at)}
+                </span>
+              </div>
+            )}{(() => {
             if (b.kind === "album") {
               const items: MediaItem[] = b.items
                 .map((m) => ({
@@ -771,6 +782,7 @@ function ChatView() {
                 onDownload={directDownload}
               />
             );
+          })().valueOf() as React.ReactNode}</Fragment>;
           })}
         </div>
       </div>

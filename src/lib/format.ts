@@ -31,3 +31,15 @@ export function formatLastSeen(iso: string | null | undefined): string {
   const diffD = Math.floor(diffH / 24);
   return `${diffD} روز پیش آنلاین بود`;
 }
+
+export function formatDayLabel(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return "امروز";
+  const y = new Date(now); y.setDate(y.getDate() - 1);
+  if (d.toDateString() === y.toDateString()) return "دیروز";
+  return d.toLocaleDateString("fa-IR", {
+    weekday: "long", day: "numeric", month: "long",
+    ...(d.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}),
+  });
+}
