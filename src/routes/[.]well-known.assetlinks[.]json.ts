@@ -1,0 +1,25 @@
+import { createFileRoute } from "@tanstack/react-router";
+
+const body = [
+  {
+    relation: ["delegate_permission/common.handle_all_urls"],
+    target: {
+      namespace: "android_app",
+      package_name: "app.lovable.rasa",
+      sha256_cert_fingerprints: [
+        "55:25:F3:D0:1B:A5:5A:2E:35:0A:6D:6B:D6:18:24:13:E6:B3:7A:8D:33:F7:EC:37:83:47:DA:68:F5:84:E1:F1",
+      ],
+    },
+  },
+];
+
+export const Route = createFileRoute("/.well-known/assetlinks.json")({
+  server: {
+    handlers: {
+      GET: async () =>
+        new Response(JSON.stringify(body), {
+          headers: { "content-type": "application/json", "access-control-allow-origin": "*" },
+        }),
+    },
+  },
+});
