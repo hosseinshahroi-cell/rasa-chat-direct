@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Download, FileText, Check, Loader2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Download, FileText, Loader2, FolderOpen } from "lucide-react";
 
 function humanSize(n: number) {
   if (!n) return "";
@@ -12,17 +12,33 @@ export function FileAttachment({ src, name, mine }: { src: string; name: string;
   const [progress, setProgress] = useState(0);
   const [state, setState] = useState<"idle" | "loading" | "done">("idle");
   const [size, setSize] = useState<number>(0);
+  const blobRef = useRef<string | null>(null);
 
-  const download = async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  // show file size before downloading
+  useEffect(() => {
+    let off = false;
+    fetch(src, { method: "HEAD" })
+      .then((r) => { const n = Number(r.headers.get("content-length") || 0); if (!off && n) setSize(n); })
+      .catch(() => {});
+    return () => { off = true; };
+  }, [src]);
+
+  useEffect(() => () => { if (blobRef.current) URL.revokeObjectURL(blobRef.current); }, []);
+
+  const openFile = () => {
+    if (blobRef.current) window.open(blobRef.current, "_blank");
+  };
+
+  const download = async () => {
     if (state === "loading") return;
+    if (state === "done") { openFile(); return; }
     setState("loading");
     setProgress(0);
     try {
       const res = await fetch(src);
       if (!res.ok || !res.body) throw new Error("network");
       const total = Number(res.headers.get("content-length") || 0);
-      setSize(total);
+      if (total) setSize(total);
       const reader = res.body.getReader();
       const chunks: Uint8Array[] = [];
       let received = 0;
@@ -33,15 +49,15 @@ export function FileAttachment({ src, name, mine }: { src: string; name: string;
         received += value.length;
         if (total) setProgress(Math.round((received / total) * 100));
       }
-      const blob = new Blob(chunks as BlobPart[]);
+      const blob = new Blob(chunks as BlobPart[], { type: res.headers.get("content-type") || undefined });
       const url = URL.createObjectURL(blob);
+      blobRef.current = url;
       const a = document.createElement("a");
       a.href = url;
-      a.download = name;
+      a.download = `rasa_${name}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 500);
       setProgress(100);
       setState("done");
     } catch {
@@ -57,12 +73,13 @@ export function FileAttachment({ src, name, mine }: { src: string; name: string;
 
   const fg = mine ? "text-white" : "text-primary";
   const bgBtn = mine ? "bg-white text-primary" : "bg-primary text-primary-foreground";
+  const sizeLabel = humanSize(size);
 
   return (
     <div
       role="button"
       tabIndex={0}
-      onClick={(e) => { e.stopPropagation(); download(e); }}
+      onClick={(e) => { e.stopPropagation(); void download(); }}
       className={`flex items-center gap-2.5 min-w-[220px] py-1 text-right cursor-pointer select-none ${mine ? "text-white" : "text-foreground"}`}
     >
       <div className="relative w-12 h-12 shrink-0">
@@ -81,7 +98,7 @@ export function FileAttachment({ src, name, mine }: { src: string; name: string;
           {state === "loading" ? (
             progress > 0 ? <span className="text-[10px] font-bold">{progress}%</span> : <Loader2 className="w-4 h-4 animate-spin" />
           ) : state === "done" ? (
-            <Check className="w-5 h-5" />
+            <FolderOpen className="w-5 h-5" />
           ) : (
             <Download className="w-5 h-5" />
           )}
@@ -92,7 +109,11 @@ export function FileAttachment({ src, name, mine }: { src: string; name: string;
           <FileText className={`w-3.5 h-3.5 ${fg} shrink-0`} /> {name}
         </p>
         <p className={`text-[11px] ${mine ? "text-white/70" : "text-muted-foreground"}`}>
-          {state === "loading" ? `در حال دانلود ${progress}%` : state === "done" ? "دانلود شد" : (size ? humanSize(size) : "برای دانلود ضربه بزنید")}
+          {state === "loading"
+            ? `در حال دانلود ${progress}%${sizeLabel ? ` از ${sizeLabel}` : ""}`
+            : state === "done"
+              ? `ذخیره شد${sizeLabel ? ` • ${sizeLabel}` : ""} — برای باز کردن ضربه بزنید`
+              : sizeLabel ? `${sizeLabel} • برای دانلود ضربه بزنید` : "برای دانلود ضربه بزنید"}
         </p>
       </div>
     </div>
