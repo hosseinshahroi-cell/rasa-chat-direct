@@ -782,7 +782,7 @@ function ChatView() {
                 onDownload={directDownload}
               />
             );
-          })().valueOf() as React.ReactNode}</Fragment>;
+          })()}</Fragment>;
           })}
         </div>
       </div>
