@@ -4,6 +4,7 @@ import { NotificationListener } from "@/components/NotificationListener";
 import { BroadcastBanner } from "@/components/BroadcastBanner";
 import { LanguageProvider } from "@/lib/i18n";
 import { IncomingCallListener } from "@/components/IncomingCallListener";
+import { PermissionPrompt } from "@/components/PermissionPrompt";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
@@ -26,6 +27,7 @@ export const Route = createFileRoute("/_authenticated")({
   },
   component: () => (
     <LanguageProvider>
+      <PermissionPrompt />
       <NotificationListener />
       <IncomingCallListener />
       <BroadcastBanner />
