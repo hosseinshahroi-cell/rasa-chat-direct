@@ -1,3 +1,4 @@
+import { getMe } from "@/lib/me";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -92,7 +93,7 @@ function ChatsList() {
   }, []);
 
   useEffect(() => {
-    supabase.auth.getUser().then(async ({ data }) => {
+    getMe().then(async ({ data }) => {
       setAuthReady(true);
       if (!data.user) { setCachedUserId(null); setUserId(null); return; }
       setUserId(data.user.id);

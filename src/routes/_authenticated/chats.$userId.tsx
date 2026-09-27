@@ -1,3 +1,4 @@
+import { getMe } from "@/lib/me";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { formatDayLabel } from "@/lib/format";
@@ -84,7 +85,7 @@ function ChatView() {
   const isSelf = me === otherId;
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
+    getMe().then(({ data }) => {
       const id = data.user?.id ?? null;
       setCachedUserId(id);
       setMe((cur) => (cur === id ? cur : id));
