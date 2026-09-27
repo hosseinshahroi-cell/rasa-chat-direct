@@ -80,6 +80,7 @@ function ChatsList() {
   const [userId, setUserId] = useState<string | null>(() => getCachedUserId());
   const [authReady, setAuthReady] = useState<boolean>(() => !!getCachedUserId());
   const [isAdmin, setIsAdmin] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [search, setSearch] = useState("");
   const { data: branding } = useBranding();
   const [selected, setSelected] = useState<string[]>([]);
@@ -479,7 +480,7 @@ function ChatsList() {
 
       <Link to="/new-chat" className="fixed bottom-6 left-6 z-10">
         <Button size="icon" className="w-14 h-14 rounded-full shadow-lg shadow-primary/30">
-          <MessageCirclePlus className="w-6 h-6" />
+          <Pencil className="w-6 h-6" />
         </Button>
       </Link>
     </div>
