@@ -7,6 +7,8 @@ import { useEffect, type ReactNode } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { installQueryPersister, setCachedUserId } from "@/lib/cache";
+import { registerOfflineSW } from "@/lib/pwa";
+import { flushOutbox } from "@/lib/outbox";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -85,6 +87,13 @@ function RootShell({ children }: { children: ReactNode }) {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const router = useRouter();
+  useEffect(() => {
+    registerOfflineSW();
+    const flush = () => flushOutbox(() => queryClient.invalidateQueries());
+    flush();
+    window.addEventListener("online", flush);
+    return () => window.removeEventListener("online", flush);
+  }, [queryClient]);
   useEffect(() => {
     installQueryPersister(queryClient);
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {

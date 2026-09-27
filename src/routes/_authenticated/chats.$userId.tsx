@@ -1,3 +1,5 @@
+import { queueOutgoing } from "@/lib/outbox";
+import { getMe } from "@/lib/me";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { formatDayLabel } from "@/lib/format";
@@ -84,7 +86,7 @@ function ChatView() {
   const isSelf = me === otherId;
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
+    getMe().then(({ data }) => {
       const id = data.user?.id ?? null;
       setCachedUserId(id);
       setMe((cur) => (cur === id ? cur : id));
@@ -363,6 +365,15 @@ function ChatView() {
     const prevReply = replyTo;
     setText("");
     setReplyTo(null);
+    if (!navigator.onLine) {
+      queueOutgoing({
+        sender_id: me, receiver_id: otherId, content,
+        attachment_url: attachment?.url ?? null, attachment_type: attachment?.type ?? null,
+        reply_to_id: prevReply?.id ?? null,
+      });
+      toast("پیام پس از اتصال به اینترنت ارسال می‌شود");
+      return;
+    }
     setSending(true);
     try {
       const { error } = await supabase.from("messages").insert({

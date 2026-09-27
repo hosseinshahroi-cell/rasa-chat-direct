@@ -1,3 +1,4 @@
+import { getMe } from "@/lib/me";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -51,7 +52,7 @@ function GroupView() {
   const [savingSettings, setSavingSettings] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { supabase.auth.getUser().then(({ data }) => setMe(data.user?.id ?? null)); }, []);
+  useEffect(() => { getMe().then(({ data }) => setMe(data.user?.id ?? null)); }, []);
 
   const { data: group } = useQuery<GroupInfo | null>({
     queryKey: ["group", groupId],

@@ -1,3 +1,4 @@
+import { getMe } from "@/lib/me";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -6,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/UserAvatar";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { MessageCirclePlus, Settings, Shield, MessageCircle, Bookmark, BadgeCheck, Users, Search, Radio, Plus, Eye, Loader2, X, Trash2, Heart, Eraser, BellOff, Bell, Check } from "lucide-react";
+import { MessageCirclePlus, Settings, Shield, MessageCircle, Bookmark, BadgeCheck, Users, Search, Radio, Plus, Eye, Loader2, X, Trash2, Heart, Eraser, BellOff, Bell, Check, Menu as MenuIcon, Pencil } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Logo, useBranding } from "@/components/Logo";
 import { formatRelativeTime } from "@/lib/format";
@@ -79,6 +80,7 @@ function ChatsList() {
   const [userId, setUserId] = useState<string | null>(() => getCachedUserId());
   const [authReady, setAuthReady] = useState<boolean>(() => !!getCachedUserId());
   const [isAdmin, setIsAdmin] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [search, setSearch] = useState("");
   const { data: branding } = useBranding();
   const [selected, setSelected] = useState<string[]>([]);
@@ -92,7 +94,7 @@ function ChatsList() {
   }, []);
 
   useEffect(() => {
-    supabase.auth.getUser().then(async ({ data }) => {
+    getMe().then(async ({ data }) => {
       setAuthReady(true);
       if (!data.user) { setCachedUserId(null); setUserId(null); return; }
       setUserId(data.user.id);
@@ -315,7 +317,33 @@ function ChatsList() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-10 bg-card/95 backdrop-blur border-b">
+      <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
+        <SheetContent side="right" className="p-0 w-72">
+          <SheetHeader className="bg-primary text-primary-foreground p-5 text-right">
+            <Logo size={52} />
+            <SheetTitle className="text-primary-foreground mt-2">{branding?.app_name || "رسا"}</SheetTitle>
+          </SheetHeader>
+          <nav className="py-2">
+            {userId && (
+              <Link to="/chats/$userId" params={{ userId }} onClick={() => setMenuOpen(false)} className="flex items-center gap-4 px-5 py-3 hover:bg-accent">
+                <Bookmark className="w-5 h-5 text-muted-foreground" /> پیام‌های ذخیره شده
+              </Link>
+            )}
+            <Link to="/new-chat" onClick={() => setMenuOpen(false)} className="flex items-center gap-4 px-5 py-3 hover:bg-accent">
+              <Users className="w-5 h-5 text-muted-foreground" /> گفتگو یا گروه جدید
+            </Link>
+            <Link to="/settings" onClick={() => setMenuOpen(false)} className="flex items-center gap-4 px-5 py-3 hover:bg-accent">
+              <Settings className="w-5 h-5 text-muted-foreground" /> تنظیمات
+            </Link>
+            {isAdmin && (
+              <Link to="/admin" onClick={() => setMenuOpen(false)} className="flex items-center gap-4 px-5 py-3 hover:bg-accent">
+                <Shield className="w-5 h-5 text-muted-foreground" /> مدیریت
+              </Link>
+            )}
+          </nav>
+        </SheetContent>
+      </Sheet>
+      <header className="sticky top-0 z-10 bg-primary text-primary-foreground shadow-md">
         {selectionMode ? (
           <div className="max-w-2xl mx-auto px-3 py-3 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
@@ -350,20 +378,12 @@ function ChatsList() {
             </div>
           </div>
         ) : (
-        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="max-w-2xl mx-auto px-2 py-2 flex items-center justify-between bg-primary text-primary-foreground">
           <div className="flex items-center gap-2">
-            <Logo size={36} />
-            <h1 className="text-xl font-bold">{branding?.app_name || "رسا"}</h1>
-          </div>
-          <div className="flex items-center gap-1">
-            {isAdmin && (
-              <Link to="/admin">
-                <Button size="icon" variant="ghost"><Shield className="w-5 h-5" /></Button>
-              </Link>
-            )}
-            <Link to="/settings">
-              <Button size="icon" variant="ghost"><Settings className="w-5 h-5" /></Button>
-            </Link>
+            <Button size="icon" variant="ghost" className="hover:bg-primary-foreground/10 text-primary-foreground" onClick={() => setMenuOpen(true)} aria-label="منو">
+              <MenuIcon className="w-6 h-6" />
+            </Button>
+            <h1 className="text-lg font-bold">{branding?.app_name || "رسا"}</h1>
           </div>
         </div>
         )}
@@ -460,7 +480,7 @@ function ChatsList() {
 
       <Link to="/new-chat" className="fixed bottom-6 left-6 z-10">
         <Button size="icon" className="w-14 h-14 rounded-full shadow-lg shadow-primary/30">
-          <MessageCirclePlus className="w-6 h-6" />
+          <Pencil className="w-6 h-6" />
         </Button>
       </Link>
     </div>
