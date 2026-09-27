@@ -1,3 +1,4 @@
+import { queueOutgoing } from "@/lib/outbox";
 import { getMe } from "@/lib/me";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
