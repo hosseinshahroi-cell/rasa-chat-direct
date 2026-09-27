@@ -364,6 +364,15 @@ function ChatView() {
     const prevReply = replyTo;
     setText("");
     setReplyTo(null);
+    if (!navigator.onLine) {
+      queueOutgoing({
+        sender_id: me, receiver_id: otherId, content,
+        attachment_url: attachment?.url ?? null, attachment_type: attachment?.type ?? null,
+        reply_to_id: prevReply?.id ?? null,
+      });
+      toast("پیام پس از اتصال به اینترنت ارسال می‌شود");
+      return;
+    }
     setSending(true);
     try {
       const { error } = await supabase.from("messages").insert({
