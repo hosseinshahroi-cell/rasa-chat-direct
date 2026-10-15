@@ -18,6 +18,7 @@ import { Route as AuthenticatedNewChatRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as DotwellKnownAssetlinksDotjsonRouteImport } from './routes/[.]well-known.assetlinks[.]json'
 import { Route as AuthenticatedChatsIndexRouteImport } from './routes/_authenticated/chats.index'
+import { Route as ApiPublicAgoraTokenRouteImport } from './routes/api/public/agora-token'
 import { Route as AuthenticatedUUsernameRouteImport } from './routes/_authenticated/u.$username'
 import { Route as AuthenticatedJoinTokenRouteImport } from './routes/_authenticated/join.$token'
 import { Route as AuthenticatedGroupGroupIdRouteImport } from './routes/_authenticated/group.$groupId'
@@ -69,6 +70,11 @@ const AuthenticatedChatsIndexRoute = AuthenticatedChatsIndexRouteImport.update({
   path: '/chats/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const ApiPublicAgoraTokenRoute = ApiPublicAgoraTokenRouteImport.update({
+  id: '/api/public/agora-token',
+  path: '/api/public/agora-token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedUUsernameRoute = AuthenticatedUUsernameRouteImport.update({
   id: '/u/$username',
   path: '/u/$username',
@@ -110,6 +116,7 @@ export interface FileRoutesByFullPath {
   '/group/$groupId': typeof AuthenticatedGroupGroupIdRoute
   '/join/$token': typeof AuthenticatedJoinTokenRoute
   '/u/$username': typeof AuthenticatedUUsernameRoute
+  '/api/public/agora-token': typeof ApiPublicAgoraTokenRoute
   '/chats/': typeof AuthenticatedChatsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -125,6 +132,7 @@ export interface FileRoutesByTo {
   '/group/$groupId': typeof AuthenticatedGroupGroupIdRoute
   '/join/$token': typeof AuthenticatedJoinTokenRoute
   '/u/$username': typeof AuthenticatedUUsernameRoute
+  '/api/public/agora-token': typeof ApiPublicAgoraTokenRoute
   '/chats': typeof AuthenticatedChatsIndexRoute
 }
 export interface FileRoutesById {
@@ -142,6 +150,7 @@ export interface FileRoutesById {
   '/_authenticated/group/$groupId': typeof AuthenticatedGroupGroupIdRoute
   '/_authenticated/join/$token': typeof AuthenticatedJoinTokenRoute
   '/_authenticated/u/$username': typeof AuthenticatedUUsernameRoute
+  '/api/public/agora-token': typeof ApiPublicAgoraTokenRoute
   '/_authenticated/chats/': typeof AuthenticatedChatsIndexRoute
 }
 export interface FileRouteTypes {
@@ -159,6 +168,7 @@ export interface FileRouteTypes {
     | '/group/$groupId'
     | '/join/$token'
     | '/u/$username'
+    | '/api/public/agora-token'
     | '/chats/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -174,6 +184,7 @@ export interface FileRouteTypes {
     | '/group/$groupId'
     | '/join/$token'
     | '/u/$username'
+    | '/api/public/agora-token'
     | '/chats'
   id:
     | '__root__'
@@ -190,6 +201,7 @@ export interface FileRouteTypes {
     | '/_authenticated/group/$groupId'
     | '/_authenticated/join/$token'
     | '/_authenticated/u/$username'
+    | '/api/public/agora-token'
     | '/_authenticated/chats/'
   fileRoutesById: FileRoutesById
 }
@@ -199,6 +211,7 @@ export interface RootRouteChildren {
   AuthRoute: typeof AuthRoute
   CompleteProfileRoute: typeof CompleteProfileRoute
   DotwellKnownAssetlinksDotjsonRoute: typeof DotwellKnownAssetlinksDotjsonRoute
+  ApiPublicAgoraTokenRoute: typeof ApiPublicAgoraTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -265,6 +278,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/chats/'
       preLoaderRoute: typeof AuthenticatedChatsIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/api/public/agora-token': {
+      id: '/api/public/agora-token'
+      path: '/api/public/agora-token'
+      fullPath: '/api/public/agora-token'
+      preLoaderRoute: typeof ApiPublicAgoraTokenRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_authenticated/u/$username': {
       id: '/_authenticated/u/$username'
@@ -337,6 +357,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRoute: AuthRoute,
   CompleteProfileRoute: CompleteProfileRoute,
   DotwellKnownAssetlinksDotjsonRoute: DotwellKnownAssetlinksDotjsonRoute,
+  ApiPublicAgoraTokenRoute: ApiPublicAgoraTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
